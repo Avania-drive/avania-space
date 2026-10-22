@@ -1,0 +1,63 @@
+import 'dotenv/config';
+import { authenticator } from 'otplib';
+import { q, pool } from '../src/db.js';
+import { hashPassword } from '../src/crypto.js';
+const B = 'http://127.0.0.1:3003';
+const mk = () => { let c = ''; return async (m, u, b) => { const r = await fetch(B + u, { method: m, headers: { 'Content-Type': 'application/json', cookie: c }, body: b ? JSON.stringify(b) : undefined });
+  const sc = r.headers.get('set-cookie'); if (sc) c = sc.split(';')[0]; let j = {}; try { j = await r.json(); } catch {} return { s: r.status, j }; }; };
+const ok = (n, c, extra = '') => console.log((c ? 'OK  ' : 'FALLA ') + n + (c ? '' : ' ' + extra));
+await q("delete from team_users where email like 'test-%@example.invalid'");
+for (const [e, r] of [['test-admin@example.invalid', 'admin'], ['test-member@example.invalid', 'member']])
+  await q('insert into team_users (email,name,role,password_hash,must_change_password) values ($1,$1,$2,$3,false)', [e, r, hashPassword('contraseña-de-prueba-1')]);
+const A = mk(), M = mk(), anon = mk(), C = mk();
+ok('sin sesión → 401', (await anon('GET', '/api/clients')).s === 401);
+ok('login mal → 401', (await anon('POST', '/api/login', { email: 'test-admin@example.invalid', password: 'x' })).s === 401);
+ok('login admin', (await A('POST', '/api/login', { email: 'test-admin@example.invalid', password: 'contraseña-de-prueba-1' })).s === 200);
+await M('POST', '/api/login', { email: 'test-member@example.invalid', password: 'contraseña-de-prueba-1' });
+const cl = (await A('POST', '/api/clients', { name: 'Clínica Prueba', city: 'Toledo' })).j.client;
+ok('crear cliente + token', !!cl?.token);
+const list = (await A('GET', '/api/clients')).j.clients.find((c) => c.id === cl.id);
+ok('panel lista cliente con 5 credenciales sugeridas', list.credentials.pendiente === 5, JSON.stringify(list.credentials));
+// cliente por enlace
+const pub = await C('GET', `/api/f/${cl.token}`);
+ok('enlace del cliente abre', pub.s === 200 && pub.j.credentials.length === 5);
+ok('enlace falso → 404', (await C('GET', '/api/f/aaaaaaaaaaaaaaaaaaaaaaaaaaaa')).s === 404);
+ok('cliente guarda sección', (await C('PUT', `/api/f/${cl.token}/sections/oferta`, { tratamiento: 'Implantes' })).s === 200);
+const r1 = await C('PUT', `/api/f/${cl.token}/sections/proyecto`, { responsable_cuenta: 'HACK' });
+const sec = (await A('GET', `/api/clients/${cl.id}`)).j.sections;
+ok('cliente NO puede editar campos del equipo', sec.proyecto?.responsable_cuenta === undefined, JSON.stringify(sec.proyecto));
+ok('equipo edita campos del equipo', (await A('PUT', `/api/clients/${cl.id}/sections/proyecto`, { responsable_cuenta: 'Andrea' })).s === 200);
+const cred = pub.j.credentials.find((c) => c.service === 'Hosting');
+const up = await C('PUT', `/api/f/${cl.token}/credentials/${cred.id}`, { username: 'root', password: 'S3cr3t-Cl13nte!' });
+ok('cliente guarda contraseña', up.s === 200 && up.j.credential.has_password && up.j.credential.status === 'recibida');
+ok('el cliente NO recibe la contraseña de vuelta', !JSON.stringify((await C('GET', `/api/f/${cl.token}`)).j).includes('S3cr3t'));
+const raw = (await q('select password_enc from credentials where id=$1', [cred.id])).rows[0].password_enc;
+ok('en la base de datos está cifrada', !raw.includes('S3cr3t') && raw.split('.').length === 3);
+ok('API del equipo no devuelve contraseña', !JSON.stringify((await A('GET', `/api/clients/${cl.id}/credentials`)).j).includes('S3cr3t'));
+// reveal
+ok('member NO ve contraseñas → 403', (await M('POST', `/api/credentials/${cred.id}/reveal`, {})).s === 403);
+ok('admin sin 2FA → 403 no_mfa', (await A('POST', `/api/credentials/${cred.id}/reveal`, {})).j.code === 'no_mfa');
+const setup = (await A('POST', '/api/mfa/setup')).j;
+ok('2FA enable con código malo → 400', (await A('POST', '/api/mfa/enable', { code: '000000' })).s === 400);
+ok('2FA enable con código bueno', (await A('POST', '/api/mfa/enable', { code: authenticator.generate(setup.secret) })).s === 200);
+// la sesión queda verificada al activar; probamos con sesión nueva sin verificar
+const A2 = mk(); await A2('POST', '/api/login', { email: 'test-admin@example.invalid', password: 'contraseña-de-prueba-1' });
+const need = await A2('POST', `/api/credentials/${cred.id}/reveal`, {});
+ok('sesión sin verificar → pide código', need.s === 403 && need.j.code === 'mfa_required');
+ok('verificar con código malo → 400', (await A2('POST', '/api/mfa/verify', { code: '123456' })).s === 400);
+ok('verificar con código bueno', (await A2('POST', '/api/mfa/verify', { code: authenticator.generate(setup.secret) })).s === 200);
+const rev = await A2('POST', `/api/credentials/${cred.id}/reveal`, {});
+ok('admin con 2FA ve la contraseña exacta', rev.j.password === 'S3cr3t-Cl13nte!');
+const lg = (await A2('GET', `/api/clients/${cl.id}/log`)).j.log;
+ok('queda registrado quién la vio', lg.some((l) => l.action === 'ver' && l.actor === 'test-admin@example.invalid'));
+ok('member NO ve el registro', (await M('GET', `/api/clients/${cl.id}/log`)).s === 403);
+ok('member NO gestiona equipo', (await M('GET', '/api/users')).s === 403);
+ok('admin NO gestiona equipo', (await A('GET', '/api/users')).s === 403);
+ok('member puede editar credenciales', (await M('PUT', `/api/credentials/${cred.id}`, { notes: 'ok' })).s === 200);
+ok('member NO borra credenciales', (await M('DELETE', `/api/credentials/${cred.id}`)).s === 403);
+ok('cliente archivado → enlace muerto', (await A('PATCH', `/api/clients/${cl.id}`, { archived: true })).s === 200 && (await C('GET', `/api/f/${cl.token}`)).s === 404);
+// limpieza
+await q('delete from clients where id=$1', [cl.id]);
+await q("delete from team_users where email like 'test-%@example.invalid'");
+await q("delete from credential_log where client_id=$1", [cl.id]);
+await pool.end();

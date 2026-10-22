@@ -1,0 +1,8 @@
+{
+  "proyecto": { "text": "Ningún dato es obligatorio. Podéis ir completando el documento poco a poco: todo se guarda solo y podéis volver a este mismo enlace cuando queráis.", "video": "" },
+  "oferta": { "text": "Es el bloque más importante. Responded como si se lo explicarais a un paciente nuevo; no hace falta redactar bonito.", "video": "" },
+  "accesos": { "text": "Si no sabéis qué es el hosting o el píxel, dadnos el contacto de quien lleva vuestra web y lo hablamos con esa persona.", "video": "" },
+  "meta": { "text": "Para darnos acceso en el Business Manager: Configuración del negocio → Socios → Añadir → Dar acceso a un socio, y pegáis nuestro identificador. Si no sabéis hacerlo, lo hacemos juntos por videollamada en cinco minutos.", "video": "" },
+  "whatsapp": { "text": "Os recomendamos un número solo para pacientes, separado del teléfono de la clínica.", "video": "" },
+  "credenciales": { "text": "Siempre que se pueda, dad acceso delegado en vez de contraseña. Si no es posible, guardadla aquí.", "video": "" }
+}

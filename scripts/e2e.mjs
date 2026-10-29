@@ -14,7 +14,7 @@ ok('sin sesión → 401', (await anon('GET', '/api/clients')).s === 401);
 ok('login mal → 401', (await anon('POST', '/api/login', { email: 'test-admin@example.invalid', password: 'x' })).s === 401);
 ok('login admin', (await A('POST', '/api/login', { email: 'test-admin@example.invalid', password: 'contraseña-de-prueba-1' })).s === 200);
 await M('POST', '/api/login', { email: 'test-member@example.invalid', password: 'contraseña-de-prueba-1' });
-const cl = (await A('POST', '/api/clients', { name: 'Clínica Prueba', city: 'Toledo' })).j.client;
+const cl = (await A('POST', '/api/clients', { name: 'Empresa Prueba', city: 'Toledo' })).j.client;
 ok('crear cliente + token', !!cl?.token);
 const list = (await A('GET', '/api/clients')).j.clients.find((c) => c.id === cl.id);
 ok('panel lista cliente con 5 credenciales sugeridas', list.credentials.pendiente === 5, JSON.stringify(list.credentials));
@@ -33,7 +33,20 @@ ok('cliente guarda contraseña', up.s === 200 && up.j.credential.has_password &&
 ok('el cliente NO recibe la contraseña de vuelta', !JSON.stringify((await C('GET', `/api/f/${cl.token}`)).j).includes('S3cr3t'));
 const raw = (await q('select password_enc from credentials where id=$1', [cred.id])).rows[0].password_enc;
 ok('en la base de datos está cifrada', !raw.includes('S3cr3t') && raw.split('.').length === 3);
+// Credenciales: sin volver a escribir la contraseña de la cuenta no se abren (ni se editan, ni se revelan).
+const locked = await A('GET', `/api/clients/${cl.id}/credentials`);
+ok('credenciales sin contraseña reciente → 403 password_required', locked.s === 403 && locked.j.code === 'password_required');
+ok('editar credencial sin contraseña reciente → 403', (await M('PUT', `/api/credentials/${cred.id}`, { notes: 'x' })).j.code === 'password_required');
+ok('revelar sin contraseña reciente → 403 password_required', (await A('POST', `/api/credentials/${cred.id}/reveal`, {})).j.code === 'password_required');
+ok('/api/reauth dice que no está abierta', (await A('GET', '/api/reauth')).j.active === false);
+ok('contraseña de la cuenta mal → 400', (await A('POST', '/api/reauth', { password: 'mal' })).s === 400);
+ok('contraseña de la cuenta bien', (await A('POST', '/api/reauth', { password: 'contraseña-de-prueba-1' })).s === 200);
+ok('/api/reauth dice que está abierta', (await A('GET', '/api/reauth')).j.active === true);
+await M('POST', '/api/reauth', { password: 'contraseña-de-prueba-1' });
 ok('API del equipo no devuelve contraseña', !JSON.stringify((await A('GET', `/api/clients/${cl.id}/credentials`)).j).includes('S3cr3t'));
+await q("update sessions set reauth_until = now() - interval '1 minute' where user_id = (select id from team_users where email='test-admin@example.invalid')");
+ok('caducada la comprobación → vuelve a pedir contraseña', (await A('GET', `/api/clients/${cl.id}/credentials`)).j.code === 'password_required');
+await A('POST', '/api/reauth', { password: 'contraseña-de-prueba-1' });
 // reveal
 ok('member NO ve contraseñas → 403', (await M('POST', `/api/credentials/${cred.id}/reveal`, {})).s === 403);
 ok('admin sin 2FA → 403 no_mfa', (await A('POST', `/api/credentials/${cred.id}/reveal`, {})).j.code === 'no_mfa');
@@ -42,6 +55,7 @@ ok('2FA enable con código malo → 400', (await A('POST', '/api/mfa/enable', { 
 ok('2FA enable con código bueno', (await A('POST', '/api/mfa/enable', { code: authenticator.generate(setup.secret) })).s === 200);
 // la sesión queda verificada al activar; probamos con sesión nueva sin verificar
 const A2 = mk(); await A2('POST', '/api/login', { email: 'test-admin@example.invalid', password: 'contraseña-de-prueba-1' });
+await A2('POST', '/api/reauth', { password: 'contraseña-de-prueba-1' });
 const need = await A2('POST', `/api/credentials/${cred.id}/reveal`, {});
 ok('sesión sin verificar → pide código', need.s === 403 && need.j.code === 'mfa_required');
 ok('verificar con código malo → 400', (await A2('POST', '/api/mfa/verify', { code: '123456' })).s === 400);

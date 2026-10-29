@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0f14" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<meta name="robots" content="noindex">
+<title>Elige tu contraseña · Avania Space</title>
+<link rel="icon" href="/brand/favicon-32.png">
+<link rel="stylesheet" href="/avania-ui.css">
+<link rel="stylesheet" href="/space.css">
+</head>
+<body>
+<div id="app"></div>
+<script>
+// Enlace de invitación (llega por correo): se comprueba y la persona elige su contraseña. No necesita sesión.
+const app = document.getElementById('app');
+const t = new URLSearchParams(location.search).get('t') || '';
+const isClient = new URLSearchParams(location.search).get('c') === '1';   // invitación de un usuario del cliente (portal), no del equipo
+const h = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k.startsWith('on') ? e.addEventListener(k.slice(2), v) : e.setAttribute(k, v);
+  e.append(...kids.flat().filter((x) => x != null));
+  return e;
+};
+const brand = () => h('div', { style: 'display:flex;align-items:flex-end;gap:7px' }, h('img', { src: '/brand/avania-light.png', alt: 'avania', height: '26' }), h('b', { style: 'font-size:13px;letter-spacing:.06em;color:#8a8a8a' }, 'SPACE'));
+const card = (...kids) => app.replaceChildren(h('div', { class: 'center' }, h('div', { class: 'card' }, brand(), ...kids)));
+async function call(method, body) {
+  const r = await fetch(`/api/${isClient ? 'p/' : ''}invitacion/${encodeURIComponent(t)}`, { method, headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'No se ha podido completar');
+  return j;
+}
+(async () => {
+  let info;
+  try { info = await call('GET'); } catch (e) { return card(h('h1', { style: 'margin-top:14px' }, 'Enlace no válido'), h('p', {}, e.message), h('a', { href: '/' }, 'Ir al acceso')); }
+  const err = h('div', { class: 'err' });
+  const a = h('input', { type: 'password', autocomplete: 'new-password', required: '', minlength: '12' });
+  const b = h('input', { type: 'password', autocomplete: 'new-password', required: '', minlength: '12' });
+  card(h('h1', { style: 'margin-top:14px' }, `Hola${info.name ? ', ' + info.name.split(' ')[0] : ''}`),
+    h('p', {}, 'Elige la contraseña de tu usuario ', h('strong', {}, info.email), '. Mínimo 12 caracteres.'),
+    h('form', { onsubmit: async (e) => {
+      e.preventDefault(); err.textContent = '';
+      if (a.value !== b.value) return (err.textContent = 'Las dos contraseñas no coinciden');
+      try { await call('POST', { password: a.value }); card(h('h1', { style: 'margin-top:14px' }, 'Contraseña guardada'), h('p', {}, isClient ? 'Ya puedes entrar a tu espacio con tu correo y tu contraseña.' : 'Ya puedes entrar con tu correo y tu contraseña. Al entrar te pediremos activar la doble verificación.'), h('a', { class: 'btn', href: isClient ? '/portal' : '/', style: 'display:block;text-align:center;margin-top:12px' }, isClient ? 'Entrar a mi espacio' : 'Entrar en Avania Space')); }
+      catch (er) { err.textContent = er.message; }
+    } },
+      h('label', {}, 'Contraseña nueva'), a, h('label', {}, 'Repítela'), b, err,
+      h('button', { class: 'btn', style: 'width:100%;margin-top:12px' }, 'Guardar y entrar')));
+})();
+</script>
+</body>
+</html>

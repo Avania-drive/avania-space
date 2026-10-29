@@ -13,11 +13,103 @@ export const el = (tag, attrs = {}, ...kids) => {
   return n;
 };
 
+const DIAS = [['lunes', 'Lunes'], ['martes', 'Martes'], ['miercoles', 'Miércoles'], ['jueves', 'Jueves'], ['viernes', 'Viernes'], ['sabado', 'Sábado'], ['domingo', 'Domingo']];
+
+// Enlaces: se aceptan "https://…" y "www.…". Junto al campo sale un botón "Abrir" que sigue lo que se escribe.
+export const toUrl = (v) => { const t = String(v || '').trim(); return /^https?:\/\/\S+$/i.test(t) ? t : /^www\.\S+\.\S+$/i.test(t) ? 'https://' + t : null; };
+function urlRow(input) {
+  const a = el('a', { class: 'btn ghost small', target: '_blank', rel: 'noopener' }, 'Abrir ↗');
+  const sync = () => { const u = toUrl(input.value); a.href = u || '#'; a.style.display = u ? '' : 'none'; };
+  input.addEventListener('input', sync); sync();
+  return el('div', { class: 'urlrow' }, input, a);
+}
+
+let uid = 0;
+// Los avisos salen en una región viva para que el lector de pantalla los lea.
+const toasts = el('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
+document.body.append(toasts);
 export const toast = (msg) => {
   const t = el('div', { class: 'toast' }, msg);
-  document.body.append(t);
+  toasts.append(t);
   setTimeout(() => t.remove(), 2400);
 };
+
+// Fechas según el idioma de la página (no un formato fijo).
+export const fmtDate = (d, opts = { dateStyle: 'medium' }) => new Intl.DateTimeFormat(document.documentElement.lang || undefined, opts).format(new Date(d));
+
+// ───────── Diálogos propios (sustituyen a prompt, confirm y alert) ─────────
+// Con rol de diálogo, foco atrapado, Esc, clic fuera y devolución del foco al cerrar. `onClose(valor)` se llama una sola vez.
+const modalStack = [];
+export function openModal(card, { label, onClose, cls = '' } = {}) {
+  const prev = document.activeElement;
+  const m = el('div', { class: ('modal ' + cls).trim() }, card);
+  card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true'); card.tabIndex = -1;
+  if (label) card.setAttribute('aria-label', label);
+  const tabbables = () => [...card.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((x) => x.offsetParent !== null);
+  const token = {};
+  const onKey = (e) => {
+    if (modalStack[modalStack.length - 1] !== token) return;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+    if (e.key !== 'Tab') return;
+    const f = tabbables();
+    if (!f.length) { e.preventDefault(); card.focus(); return; }
+    const at = document.activeElement;
+    if (e.shiftKey && (at === f[0] || at === card)) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && at === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  };
+  let done = false;
+  function close(v) {
+    if (done) return; done = true;
+    document.removeEventListener('keydown', onKey, true);
+    modalStack.splice(modalStack.indexOf(token), 1);
+    m.remove();
+    try { if (prev && prev.isConnected && prev.focus) prev.focus(); } catch { /* sin foco previo */ }
+    if (onClose) onClose(v);
+  }
+  m.addEventListener('mousedown', (e) => { if (e.target === m) close(); });
+  modalStack.push(token); document.addEventListener('keydown', onKey, true);
+  document.body.append(m);
+  (card.querySelector('[data-autofocus]') || tabbables()[0] || card).focus();
+  return { close, el: m };
+}
+export function askText({ title, label, value = '', placeholder = '', hint = '', ok = 'Aceptar' }) {
+  return new Promise((resolve) => {
+    const id = `ask-${++uid}`;
+    const inp = el('input', { id, name: 'valor', value, placeholder, autocomplete: 'off', 'data-autofocus': '' });
+    const card = el('form', { class: 'card', onsubmit: (e) => { e.preventDefault(); d.close(inp.value.trim()); } },
+      el('h2', {}, title), el('label', { for: id }, label), inp, hint ? el('div', { class: 'muted pwhint' }, hint) : '',
+      el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn ghost', onclick: () => d.close(null) }, 'Cancelar'), el('button', { class: 'btn' }, ok)));
+    const d = openModal(card, { label: title, onClose: (v) => resolve(v ?? null) });
+  });
+}
+export function askConfirm({ title, text = '', ok = 'Aceptar', danger = false }) {
+  return new Promise((resolve) => {
+    const card = el('div', { class: 'card' }, el('h2', {}, title), text ? el('p', { class: 'muted' }, text) : '',
+      el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn ghost', 'data-autofocus': '', onclick: () => d.close(false) }, 'Cancelar'),
+        el('button', { type: 'button', class: 'btn' + (danger ? ' danger' : ''), onclick: () => d.close(true) }, ok)));
+    const d = openModal(card, { label: title, onClose: (v) => resolve(v === true) });
+  });
+}
+export function notice({ title, text = '', secret = '', ok = 'Entendido' }) {
+  return new Promise((resolve) => {
+    const copy = secret ? el('button', { type: 'button', class: 'btn ghost small', onclick: () => navigator.clipboard.writeText(secret).then(() => toast('Copiado'), () => toast('No se pudo copiar')) }, 'Copiar') : '';
+    const card = el('div', { class: 'card' }, el('h2', {}, title), text ? el('p', { class: 'muted' }, text) : '',
+      secret ? el('div', { class: 'row' }, el('code', { class: 'mono grow', style: 'overflow-wrap:anywhere' }, secret), copy) : '',
+      el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn', 'data-autofocus': '', onclick: () => d.close() }, ok)));
+    const d = openModal(card, { label: title, onClose: () => resolve() });
+  });
+}
+
+// Une la etiqueta de un campo con su control y le pone nombre, sin autocompletado ni corrector donde no toca.
+function bind(label, node, f) {
+  const c = node.matches && node.matches('input,select,textarea') ? node : node.querySelector('input:not([type=checkbox]):not([type=color]),select,textarea');
+  if (!c) return;
+  if (!c.id) c.id = `fld-${++uid}`;
+  label.setAttribute('for', c.id);
+  if (!c.name) c.name = f.k;
+  if (!c.getAttribute('autocomplete')) c.setAttribute('autocomplete', 'off');
+  if (['url', 'email', 'tel'].includes(c.type) || f.k === 'bm_id') c.spellcheck = false;
+}
 
 export async function api(method, url, body) {
   const r = await fetch(url, {
@@ -31,10 +123,50 @@ export async function api(method, url, body) {
 
 const TRI = ['Sí', 'No', 'No lo sé'];
 
+// Logos de las aplicaciones a las que enlazan algunos campos (dibujados en línea para no depender de nada externo).
+const APPS = {
+  clickup: { name: 'ClickUp', img: '/brand/clickup.png' },
+  drive: { name: 'Google Drive', img: '/brand/google-drive.png' },
+};
+export function appIcon(app) {
+  const a = APPS[app];
+  if (a.img) return el('img', { class: 'appic', src: a.img, alt: '', width: 22, height: 22, 'aria-hidden': 'true', draggable: 'false' });
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('viewBox', a.vb); s.setAttribute('class', 'appic'); s.setAttribute('aria-hidden', 'true'); s.innerHTML = a.svg;
+  return s;
+}
+export const appName = (app) => APPS[app].name;
+
 // Pinta una sección del formulario. `save(partial)` guarda solo lo que cambia.
-export function renderSection(sec, data, { team, save }) {
+// Icono de cada tarjeta: un cuadradito de color con un dibujo de línea, según de qué trate el grupo.
+const GI = {
+  clinica: '<path d="M4 21V8l6-4v17M10 21V10l6 3v8M16 21h5V12l-5-3"/>', pin: '<path d="M12 21s-6-5.500-6-11a6 6 0 0 1 12 0c0 5.500-6 11-6 11z"/><circle cx="12" cy="10" r="2"/>',
+  user: '<circle cx="12" cy="8" r="3.500"/><path d="M5 20c.6-3.600 3.400-5.500 7-5.500s6.400 1.900 7 5.500"/>', users: '<circle cx="9" cy="8" r="3.500"/><path d="M2.500 20c.6-3.600 3.200-5.500 6.500-5.500s5.900 1.900 6.500 5.500M16 4.800a3.500 3.500 0 0 1 0 6.400M18 14.800c2 .6 3.200 2.300 3.500 5.200"/>',
+  tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.500" cy="8.500" r="1"/>', video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>',
+  cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', chat: '<path d="M21 11.500a8.400 8.400 0 0 1-12.300 7.400L3 20.500l1.700-5.500A8.400 8.400 0 1 1 21 11.500z"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>', money: '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.500"/>',
+  share: '<circle cx="6" cy="12" r="2.500"/><circle cx="18" cy="6" r="2.500"/><circle cx="18" cy="18" r="2.500"/><path d="M8.300 11l7.400-3.800M8.300 13l7.400 3.800"/>', cap: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2.500 9 2.500 12 0v-5"/>',
+  check: '<circle cx="12" cy="12" r="9"/><path d="M8 12.500l3 3 5-6"/>', flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>', img: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.600"/><path d="M21 16l-5-5-8 8"/>',
+  doc: '<path d="M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6"/>', mega: '<path d="M3 11v3l12 5V6zM15 8c3 .5 5 2 5 4s-2 3.500-5 4"/>', lock: '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+};
+const GI_RULES = [[/empresa|clínica|datos de la/i, 'clinica'], [/área|influencia/i, 'pin'], [/responsables/i, 'user'], [/quién atiende|asisten/i, 'users'], [/grupo/i, 'users'], [/avatar|paciente ideal/i, 'user'],
+  [/competencia/i, 'target'], [/oferta/i, 'tag'], [/graba|rodaje/i, 'video'], [/cuándo|calendario|fechas|agenda/i, 'cal'], [/horario/i, 'clock'], [/temas|whatsapp|número/i, 'chat'],
+  [/web|dominio|hosting|google/i, 'globe'], [/business|inversión|cuenta publicitaria/i, 'money'], [/píxel/i, 'target'], [/páginas|perfiles|redes/i, 'share'], [/formación|sesión/i, 'cap'],
+  [/materiales|estado/i, 'img'], [/antes de|proyecto/i, 'flag'], [/confidencial|revisión/i, 'check']];
+function groupIcon(title, i) {
+  const key = (GI_RULES.find(([re]) => re.test(title)) || [0, 'doc'])[1];
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.innerHTML = GI[key] || GI.doc;
+  const t = el('span', { class: 'gicon' }); t.append(svg); return t;
+}
+
+let searchName = '';
+let watchers = [];
+export function renderSection(sec, data, { team, save, preview, clientName }) {
+  searchName = clientName || ''; watchers = [];
   const wrap = el('div');
-  const status = el('div', { class: 'saved' });
+  const status = el('div', { class: 'saved', role: 'status', 'aria-live': 'polite' });
   let pending = {}, timer = null;
   const flush = async () => {
     const body = pending; pending = {}; timer = null;
@@ -43,27 +175,191 @@ export function renderSection(sec, data, { team, save }) {
     try { await save(body); status.className = 'saved ok'; status.textContent = 'Guardado ✓'; }
     catch (e) { status.className = 'saved bad'; status.textContent = 'No se pudo guardar: ' + e.message; Object.assign(pending, body); }
   };
-  const change = (k, v) => { data[k] = v; pending[k] = v; clearTimeout(timer); timer = setTimeout(flush, 700); status.className = 'saved'; status.textContent = 'Sin guardar…'; };
+  const rawChange = (k, v) => { data[k] = v; pending[k] = v; watchers.forEach((w) => w()); clearTimeout(timer); timer = setTimeout(flush, 700); status.className = 'saved'; status.textContent = 'Sin guardar…'; };
+
+  // «No lo sé, que lo haga Avania»: el campo queda como tarea del equipo (data._avania). Si alguien lo rellena, deja de estarlo.
+  const repaints = {};
+  const change = (k, v) => {
+    rawChange(k, v);
+    if (k !== '_avania' && String(v ?? '').trim() !== '' && Array.isArray(data._avania) && data._avania.includes(k)) { data._avania = data._avania.filter((x) => x !== k); rawChange('_avania', data._avania); }
+    if (repaints[k]) repaints[k]();
+  };
+  const delegateControl = (f, node) => {
+    const box = el('div', { class: 'delegate' });
+    const on = () => Array.isArray(data._avania) && data._avania.includes(f.k);
+    const toggle = () => { const set = new Set(Array.isArray(data._avania) ? data._avania : []); if (set.has(f.k)) set.delete(f.k); else set.add(f.k); data._avania = [...set]; rawChange('_avania', data._avania); paint(); };
+    const paint = () => {
+      node.classList.toggle('delegated', on());
+      const filled = String(data[f.k] ?? '').trim() !== '';
+      box.replaceChildren(...(on() ? [el('span', { class: 'tag' }, 'Lo hará Avania'), el('button', { type: 'button', class: 'linkbtn', onclick: toggle }, 'Deshacer')]
+        : filled || team ? [] : [el('button', { type: 'button', class: 'linkbtn', onclick: toggle }, 'No lo sé, que lo haga Avania')]));
+    };
+    repaints[f.k] = paint; paint();
+    return box;
+  };
 
   if (sec.intro) wrap.append(el('div', { class: 'intro' }, sec.intro));
-  for (const g of sec.groups) {
-    wrap.append(el('h3', {}, g.title));
-    if (g.intro) wrap.append(el('div', { class: 'intro' }, g.intro));
-    for (const f of g.fields) wrap.append(field(f, data, change, team));
-  }
+  // Cada grupo es una tarjeta con su icono; las tablas, el horario y los documentos ocupan todo el ancho.
+  const grid = el('div', { class: 'gcards' });
+  // Lo que es solo de la agencia no se enseña al cliente (ni los campos ni los grupos que se quedan vacíos).
+  const hiddenFromClient = (f) => f.owner === 'team' && !f.shared;
+  const secAgency = sec.groups.flatMap((g) => g.fields).every((f) => f.owner === 'team');
+  sec.groups.forEach((g, i) => {
+    if (!team && g.fields.every(hiddenFromClient)) return;
+    const wide = g.fields.some((f) => ['table', 'horario', 'docs', 'calendario'].includes(f.type)) || g.fields.length > 7;
+    const body = el('div', { class: 'gfields' });
+    for (const f of g.fields) {
+      if (!team && hiddenFromClient(f)) continue;
+      const node = field(f, data, change, team, preview);
+      // Vista de la agencia: cada campo lleva el color de quién lo ve (navy = solo agencia, gris = lo ve el cliente).
+      if (team) {
+        const agency = f.owner === 'team' && !f.shared;
+        node.dataset.scope = agency ? 'agency' : 'client';
+        if (f.owner === 'team' && !secAgency) node.querySelector('label')?.append(el('span', { class: 'scope-tag' }, f.shared ? 'Lo rellena la agencia · lo ve el cliente' : 'Solo agencia'));
+      }
+      const big = ['table', 'horario', 'docs', 'calendario'].includes(f.type);
+      node.classList.add('w' + (f.w || (big || f.search ? 12 : 6)));
+      if (f.calside) node.classList.add('calside'); if (f.side) node.classList.add('side');
+      if (f.owner !== 'team' && !['table', 'horario', 'docs', 'calendario', 'check'].includes(f.type) && node.lastElementChild) {
+        const ctl = node.lastElementChild, box = el('div', { class: 'fctl' });
+        ctl.replaceWith(box); box.append(ctl, delegateControl(f, node));
+      }
+      body.append(node);
+    }
+    grid.append(el('section', { class: 'gcard' + (wide ? ' wide' : '') },
+      el('header', { class: 'ghead' }, groupIcon(g.title, i), el('h2', {}, g.title.replace(/^\d+(\.\d+)?\s+/, ''))),
+      g.intro ? el('div', { class: 'gintro' }, [].concat(g.intro).map((t) => el('p', {}, t))) : '', body));
+  });
+  // Si queda una tarjeta sola en su fila, ocupa todo el ancho.
+  const half = [...grid.children].filter((c) => !c.classList.contains('wide'));
+  if (half.length % 2) half[half.length - 1].classList.add('wide');
+  wrap.append(grid);
   wrap.append(status);
   window.addEventListener('beforeunload', () => { if (Object.keys(pending).length) flush(); }, { once: true });
   return wrap;
 }
 
-function field(f, data, change, team) {
+// Fechas: el navegador da por buena «0002-11-02» al teclear el primer dígito del año. Solo se acepta con año de cuatro cifras (2000-2100).
+export const DATE_ATTRS = { min: '2000-01-01', max: '2100-12-31' };
+export const okDate = (v) => v === '' || /^20\d\d-\d\d-\d\d$/.test(v);
+
+// Texto de una celda de tabla en solo lectura: las fechas con formato legible y los correos/enlaces pulsables.
+const cellText = (v, c) => {
+  const t = String(v ?? '').trim();
+  if (!t) return '—';
+  if (c.type === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(t)) return fmtDate(t + 'T12:00:00');
+  if (/^\S+@\S+\.\S+$/.test(t)) return el('a', { href: `mailto:${t}` }, t);
+  return toUrl(t) ? el('a', { href: toUrl(t), target: '_blank', rel: 'noopener' }, t) : t;
+};
+
+function field(f, data, change, team, preview) {
   const readonly = f.owner === 'team' && !team;
   const label = el('label', {}, f.label);
-  const hint = f.hint ? el('div', { class: 'hint' }, f.hint) : null;
+  const hint = null;   // sin subetiquetas bajo el nombre del campo
   const v = data[f.k];
   let input;
   if (readonly) {
-    return el('div', { class: 'field' }, label, el('div', { class: 'ro' }, v || 'Lo rellenamos nosotros'));
+    if (f.type === 'table') {
+      const rows = (Array.isArray(v) ? v : []).filter((r) => f.cols.some((c) => String(r?.[c.k] ?? '').trim()));
+      return el('div', { class: 'field' }, label, hint, rows.length
+        ? el('div', { class: 'scroll' }, el('table', { class: 'grid-in ro-table' }, el('thead', {}, el('tr', {}, f.cols.map((c) => el('th', {}, c.label)))),
+          el('tbody', {}, rows.map((r) => el('tr', {}, f.cols.map((c) => el('td', {}, cellText(r[c.k], c))))))))
+        : el('div', { class: 'ro' }, 'Lo rellenamos nosotros'));
+    }
+    if (f.type === 'docs') {
+      const list = (Array.isArray(v) ? v : []).filter((r) => r?.url);
+      return el('div', { class: 'field' }, label, list.length ? el('div', { class: 'plist' }, list.map((r) => el('div', { class: 'prow' }, el('span', { class: 'grow' }, r.nombre || 'Documento'), el('a', { class: 'btn ghost small', href: r.url, target: '_blank', rel: 'noopener' }, 'Abrir ↗')))) : el('div', { class: 'ro' }, 'Lo rellenamos nosotros'));
+    }
+    return el('div', { class: 'field' }, label, el('div', { class: 'ro', style: 'white-space:pre-line' }, toUrl(v) ? el('a', { href: toUrl(v), target: '_blank', rel: 'noopener' }, v) : (v || 'Lo rellenamos nosotros')));
+  }
+  if (f.type === 'docs') {
+    const rows = Array.isArray(v) ? v : [];
+    data[f.k] = rows;
+    const body = el('tbody');
+    const draw = () => body.replaceChildren(...rows.map((r, i) => el('tr', {},
+      el('td', {}, el('input', { value: r.nombre || '', placeholder: 'Nombre (p. ej. Análisis de competencia)', 'aria-label': 'Nombre', oninput: (e) => { r.nombre = e.target.value; change(f.k, rows); } })),
+      el('td', {}, el('input', { type: 'url', value: r.url || '', placeholder: 'Pega el enlace de Google Drive…', 'aria-label': 'Enlace', oninput: (e) => { r.url = e.target.value; change(f.k, rows); }, onchange: () => preview && r.url && preview(r) })),
+      el('td', { class: 'row' },
+        preview ? el('button', { class: 'btn small', type: 'button', onclick: () => preview(r) }, 'Ver') : '',
+        r.url ? el('a', { class: 'btn ghost small', href: r.url, target: '_blank', rel: 'noopener' }, 'Abrir') : '',
+        el('button', { class: 'btn ghost small', type: 'button', title: 'Quitar', 'aria-label': 'Quitar enlace', onclick: () => { rows.splice(i, 1); change(f.k, rows); draw(); } }, '✕')))));
+    draw();
+    return el('div', { class: 'field' }, hint, el('div', { class: 'scroll' }, el('table', { class: 'grid-in docs' }, body)),
+      el('button', { class: 'btn ghost small', type: 'button', onclick: () => { rows.push({ nombre: '', url: '' }); draw(); } }, '+ Añadir enlace'));
+  }
+  if (f.type === 'calendario') {
+    const sel = (data[f.k] = Array.isArray(v) ? [...v] : []);
+    const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    const iso = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const today = new Date(); const todayIso = iso(today.getFullYear(), today.getMonth(), today.getDate());
+    const first = sel.slice().sort()[0];
+    let y = first ? +first.slice(0, 4) : today.getFullYear(), m = first ? +first.slice(5, 7) - 1 : today.getMonth();
+    const box = el('div', { class: 'cal' });
+    const long = (d) => fmtDate(d + 'T12:00:00', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const toggle = (d) => { const i = sel.indexOf(d); if (i >= 0) sel.splice(i, 1); else sel.push(d); sel.sort(); change(f.k, sel); draw(); };
+    const draw = () => {
+      const lead = (new Date(y, m, 1).getDay() + 6) % 7, days = new Date(y, m + 1, 0).getDate();
+      const cells = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
+      const nav = (dm) => () => { m += dm; if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; } draw(); };
+      box.replaceChildren(
+        el('div', { class: 'cal-card' },
+          el('div', { class: 'cal-head' }, el('button', { type: 'button', class: 'cal-nav', 'aria-label': 'Mes anterior', onclick: nav(-1) }, '‹'), el('strong', {}, `${MESES[m][0].toUpperCase()}${MESES[m].slice(1)} ${y}`), el('button', { type: 'button', class: 'cal-nav', 'aria-label': 'Mes siguiente', onclick: nav(1) }, '›')),
+          el('div', { class: 'cal-grid' }, ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((d) => el('span', { class: 'cal-dow' }, d)),
+            cells.map((d) => { if (!d) return el('span'); const k = iso(y, m, d); return el('button', { type: 'button', class: 'cal-day' + (sel.includes(k) ? ' on' : '') + (k === todayIso ? ' today' : ''), 'aria-pressed': String(sel.includes(k)), 'aria-label': long(k), onclick: () => toggle(k) }, d); }))),
+        el('div', { class: 'cal-list' },
+          sel.length ? [el('div', { class: 'muted', style: 'margin-bottom:6px' }, sel.length === 1 ? 'Fecha señalada' : 'Fechas señaladas'),
+            ...sel.map((k) => el('div', { class: 'cal-chip' }, el('i'), el('span', {}, long(k).replace(/^./, (c) => c.toUpperCase())), el('button', { type: 'button', class: 'cal-x', title: 'Quitar', 'aria-label': 'Quitar ' + long(k), onclick: () => toggle(k) }, '✕')))]
+            : el('div', { class: 'muted' }, 'Todavía no hay ninguna fecha señalada. Pulsa un día del calendario.')));
+    };
+    draw();
+    return el('div', { class: 'field' }, label, hint, box);
+  }
+  if (f.type === 'categoria') {
+    const PALETA = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#6d28d9', '#0e7490', '#4d7c0f', '#be185d'];
+    let cats = [];
+    const sel = el('select', { 'aria-label': 'Categoría' });
+    const colorIn = el('input', { type: 'color', title: 'Color de la categoría', 'aria-label': 'Color de la categoría', class: 'catcolor' });
+    const fill = () => {
+      const cur = data[f.k] || '';
+      sel.replaceChildren(el('option', { value: '' }, '— Sin categoría —'), ...cats.map((c) => el('option', { value: c.name, selected: c.name === cur }, c.name)), el('option', { value: '__nueva' }, '＋ Nueva categoría…'));
+      const c = cats.find((x) => x.name === cur); colorIn.value = c ? c.color : '#d0d5dd'; colorIn.disabled = !c;
+    };
+    const upsert = async (name, color) => { const { category } = await api('POST', '/api/categories', { name, color }); cats = [...cats.filter((c) => c.name !== category.name), category].sort((a, b) => a.name.localeCompare(b.name, 'es')); return category; };
+    sel.addEventListener('change', async () => {
+      if (sel.value !== '__nueva') { change(f.k, sel.value); fill(); return; }
+      const name = await askText({ title: 'Nueva categoría', label: 'Nombre de la categoría', hint: 'Por ejemplo: Industrial, Seguros…', ok: 'Crear categoría' });
+      if (!name) { fill(); return; }
+      try { const c = await upsert(name, (cats.find((x) => x.name === name) || {}).color || PALETA[cats.length % PALETA.length]); change(f.k, c.name); } catch (e) { toast(e.message); }
+      fill();
+    });
+    colorIn.addEventListener('change', async () => { const cur = data[f.k]; if (!cur) return; try { await upsert(cur, colorIn.value); } catch (e) { toast(e.message); } fill(); });
+    api('GET', '/api/categories').then((r) => { cats = r.categories; fill(); }).catch(() => fill());
+    fill();
+    bind(label, sel, f);
+    return el('div', { class: 'field' }, label, hint, el('div', { class: 'catrow' }, sel, colorIn));
+  }
+  if (f.type === 'horario') {
+    const h = (data[f.k] = v && typeof v === 'object' ? v : {});
+    const hrs = ['m1', 'm2', 't1', 't2'];
+    // Día abierto: el interruptor guardado o, en datos antiguos, si tiene alguna hora.
+    for (const [d] of DIAS) { const x = (h[d] = h[d] || {}); if (typeof x.abre !== 'boolean') x.abre = hrs.some((c) => x[c]); }
+    const ins = {}, sw = {};
+    const apply = (d) => hrs.forEach((c) => { ins[d + c].disabled = !h[d].abre; });
+    const t = (d, c, ph) => (ins[d + c] = el('input', { type: 'time', value: h[d][c] || '', 'aria-label': ph, disabled: !h[d].abre, oninput: (e) => { h[d][c] = e.target.value; change(f.k, h); } }));
+    // Copia el día de arriba (lunes) al resto: abierto o cerrado y sus horas.
+    const copiar = () => {
+      const [first, ...rest] = DIAS.map(([d]) => d);
+      for (const d of rest) { h[d].abre = h[first].abre; sw[d].checked = h[d].abre; for (const c of hrs) { h[d][c] = h[first][c] || ''; ins[d + c].value = h[d][c]; } apply(d); }
+      change(f.k, h);
+    };
+    const copyBtn = el('button', { type: 'button', class: 'btn ghost small', title: 'Copiar este horario a todos los demás días', 'aria-label': 'Copiar el horario del lunes a todos los demás días', onclick: copiar }, 'Copiar a todos');
+    const toggle = (d, n) => el('label', { class: 'av-switch', title: `${n}: ${h[d].abre ? 'día de trabajo' : 'cerrado'}` },
+      (sw[d] = el('input', { type: 'checkbox', checked: h[d].abre, 'aria-label': `${n} abierto`, onchange: (e) => { h[d].abre = e.target.checked; apply(d); change(f.k, h); } })), el('i'), el('strong', {}, n));
+    input = el('div', { class: 'scroll' }, el('table', { class: 'grid-in horario' },
+      el('thead', {}, el('tr', {}, el('th', { rowspan: 2 }, 'Día'), el('th', { colspan: 2, class: 'ctr' }, 'Mañana'), el('th', { colspan: 2, class: 'ctr' }, 'Tarde'), el('th', { rowspan: 2 })),
+        el('tr', {}, ['De', 'A', 'De', 'A'].map((x) => el('th', { class: 'ctr' }, x)))),
+      el('tbody', {}, DIAS.map(([d, n], i) => el('tr', {}, el('td', {}, toggle(d, n)), el('td', {}, t(d, 'm1', `${n} mañana de`)), el('td', {}, t(d, 'm2', `${n} mañana a`)), el('td', {}, t(d, 't1', `${n} tarde de`)), el('td', {}, t(d, 't2', `${n} tarde a`)), el('td', {}, i === 0 ? copyBtn : ''))))));
+    return el('div', { class: 'field' }, label, hint, input);
   }
   if (f.type === 'table') {
     const rows = Array.isArray(v) && v.length ? v : [{}, {}, {}].map(() => ({}));
@@ -71,31 +367,60 @@ function field(f, data, change, team) {
     const body = el('tbody');
     const draw = () => {
       body.replaceChildren(...rows.map((r, i) => el('tr', {},
-        f.cols.map((c) => el('td', {}, el('input', { value: r[c.k] || '', 'aria-label': c.label, oninput: (e) => { r[c.k] = e.target.value; change(f.k, rows); } }))),
-        el('td', {}, el('button', { class: 'btn ghost small', title: 'Quitar fila', onclick: () => { rows.splice(i, 1); change(f.k, rows); draw(); } }, '✕')))));
+        f.cols.map((c) => el('td', {}, c.type === 'select'
+          ? el('select', { 'aria-label': c.label, onchange: (e) => { r[c.k] = e.target.value; change(f.k, rows); } }, el('option', { value: '' }, '—'), c.options.map((o) => el('option', { value: o, selected: r[c.k] === o }, o)))
+          : el('input', { type: c.type === 'date' ? 'date' : 'text', ...(c.type === 'date' ? DATE_ATTRS : {}), value: r[c.k] || '', 'aria-label': c.label, oninput: (e) => { if (c.type === 'date' && !okDate(e.target.value)) return; r[c.k] = e.target.value; change(f.k, rows); } }))),
+        el('td', {}, el('button', { class: 'btn ghost small', title: 'Quitar fila', 'aria-label': 'Quitar fila', onclick: () => { rows.splice(i, 1); change(f.k, rows); draw(); } }, '✕')))));
     };
     draw();
     input = el('div', { class: 'scroll' },
-      el('table', { class: 'grid-in' }, el('thead', {}, el('tr', {}, f.cols.map((c) => el('th', {}, c.label)), el('th'))), body),
+      el('table', { class: 'grid-in' }, el('thead', {}, el('tr', {}, f.cols.map((c) => el('th', {}, c.label)), el('th', {}, el('span', { class: 'sr-only' }, 'Quitar fila')))), body),
       el('button', { class: 'btn ghost small', onclick: () => { rows.push({}); draw(); } }, '+ Añadir fila'));
     return el('div', { class: 'field' }, label, hint, input);
   }
   if (f.type === 'check') {
     return el('div', { class: 'field check' }, el('label', {},
-      el('input', { type: 'checkbox', checked: v === true, onchange: (e) => change(f.k, e.target.checked) }), f.label));
+      el('input', { type: 'checkbox', name: f.k, checked: v === true, onchange: (e) => change(f.k, e.target.checked) }), f.label));
   }
   if (f.type === 'textarea') input = el('textarea', { oninput: (e) => change(f.k, e.target.value) }, v || '');
-  else if (f.type === 'select' || f.type === 'tri') {
+  else if (f.type === 'tri' || (f.type === 'select' && f.options.length <= 3)) {
     const opts = f.type === 'tri' ? TRI : f.options;
+    const box = el('div', { class: 'seg opt', role: 'group', 'aria-label': f.label });
+    const paint = () => box.querySelectorAll('button').forEach((b) => { const on = data[f.k] === b.dataset.v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+    opts.forEach((o) => box.append(el('button', { type: 'button', 'data-v': o, onclick: () => { change(f.k, data[f.k] === o ? '' : o); paint(); } }, o)));
+    paint();
+    input = box;
+  } else if (f.type === 'select') {
+    const opts = f.options;
     input = el('select', { onchange: (e) => change(f.k, e.target.value) },
       el('option', { value: '' }, '—'), opts.map((o) => el('option', { value: o, selected: v === o }, o)));
-  } else input = el('input', { type: { number: 'number', date: 'date', url: 'url', email: 'email', tel: 'tel' }[f.type] || 'text', value: v || '', oninput: (e) => change(f.k, e.target.value) });
+  } else {
+    input = el('input', { type: { number: 'number', date: 'date', url: 'url', email: 'email', tel: 'tel' }[f.type] || 'text', ...(f.type === 'date' ? DATE_ATTRS : {}), value: v || '', oninput: (e) => { if (f.type === 'date' && !okDate(e.target.value)) return; change(f.k, e.target.value); } });
+    if (f.type === 'url' || f.type === 'text') input = urlRow(input);
+    if (f.app) input = el('div', { class: 'applink' }, el('span', { class: 'apptile', title: appName(f.app) }, appIcon(f.app)), input);
+    if (f.k === 'bm_id') {
+      const raw = input.querySelector ? input.querySelector('input') : input;
+      const btn = el('a', { class: 'btn small', target: '_blank', rel: 'noopener' }, 'Abrir Business Manager ↗');
+      const note = el('div', { class: 'muted pwhint' });
+      const upd = () => {
+        const id = String(raw.value || '').replace(/\s/g, '');
+        const ok = data.bm_acceso === 'Sí' && /^\d{5,20}$/.test(id);
+        btn.classList.toggle('disabled', !ok);
+        if (ok) { btn.href = `https://business.facebook.com/latest/settings/business_info?business_id=${id}`; btn.removeAttribute('aria-disabled'); btn.removeAttribute('tabindex'); }
+        else { btn.removeAttribute('href'); btn.setAttribute('aria-disabled', 'true'); btn.setAttribute('tabindex', '-1'); }
+        note.textContent = ok ? '' : (!/^\d{5,20}$/.test(id) ? 'Escribe el ID del Business Manager para activar el botón.' : 'Se activa cuando se marca «Sí» en «¿Habéis concedido ya el acceso?».');
+      };
+      watchers.push(upd); raw.addEventListener('input', upd); upd();
+      input = el('div', {}, input, el('div', { style: 'margin-top:8px' }, btn), note);
+    }
+    if (f.search === 'drive') input.append(el('a', { class: 'btn ghost small', target: '_blank', rel: 'noopener', title: 'Abre Google Drive buscando; copia aquí el enlace del archivo', href: 'https://drive.google.com/drive/search?q=' + encodeURIComponent(('guiones ' + searchName).trim()) }, 'Buscar en Drive'));
+  }
+  bind(label, input, f);
   return el('div', { class: 'field' }, label, hint, input);
 }
 
 // Guía de ayuda con vídeo por sección. Se rellena en HELP (public/ayuda.json).
-export function helpBlock(help) {
-  if (!help || (!help.text && !help.video)) return null;
+function helpBody(help) {
   const body = el('div', { class: 'body' });
   if (help.text) body.append(el('p', {}, help.text));
   if (help.video) {
@@ -105,13 +430,28 @@ export function helpBlock(help) {
     else if (vm) body.append(el('iframe', { src: `https://player.vimeo.com/video/${vm[1]}`, allowfullscreen: true, loading: 'lazy' }));
     else body.append(el('a', { href: u, target: '_blank', rel: 'noopener' }, 'Ver el vídeo'));
   }
-  return el('details', { class: 'help' }, el('summary', {}, '¿Cómo se hace? Ayuda y vídeo'), body);
+  return body;
+}
+/** Botón de ayuda (icono «?») para la esquina superior derecha: abre la guía de la sección con su texto y vídeo. null si no hay guía. */
+export function helpButton(help, title = 'Ayuda') {
+  if (!help || (!help.text && !help.video)) return null;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('class', 'ic'); svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = '<circle cx="12" cy="12" r="9"/><path d="M9.500 9.500a2.500 2.500 0 1 1 3.500 2.300c-.700.400-1 .900-1 1.700M12 17v.01"/>';
+  return el('button', { type: 'button', class: 'btn ghost small helpbtn', title: 'Cómo se hace: ayuda y vídeo', 'aria-label': 'Cómo se hace: ayuda y vídeo', onclick: () => {
+    const card = el('div', { class: 'card helpcard' }, el('h2', { style: 'margin-top:0' }, title), helpBody(help), el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { class: 'btn ghost', onclick: () => m.close() }, 'Cerrar')));
+    const m = openModal(card, { label: 'Ayuda' });
+  } }, svg);
+}
+export function helpBlock(help) {
+  if (!help || (!help.text && !help.video)) return null;
+  return el('details', { class: 'help' }, el('summary', {}, '¿Cómo se hace? Ayuda y vídeo'), helpBody(help));
 }
 
 // Tabla de credenciales. mode 'team' (con ver/copiar) o 'client' (solo escribir).
 export function renderCredentials(root, { mode, services, list, create, update, remove, reveal, askCode, canSee }) {
-  const body = el('tbody');
-  const status = el('div', { class: 'saved' });
+  const body = el('div', { class: 'credlist' });
+  const status = el('div', { class: 'saved', role: 'status', 'aria-live': 'polite' });
   let rows = [];
   const mark = (txt, cls = '') => { status.className = 'saved ' + cls; status.textContent = txt; };
   const STATUS = { pendiente: 'warn', recibida: '', verificada: 'ok' };
@@ -132,10 +472,13 @@ export function renderCredentials(root, { mode, services, list, create, update, 
     }
   }
 
+  // Cada credencial es una fila desplegable: cerrada solo se ve el servicio, el estado y si tiene contraseña; abierta, sus datos
+  // en una cuadrícula que se adapta al ancho (nada se sale por la derecha, ni en pantallas estrechas).
+  const openIds = new Set();
   const draw = () => body.replaceChildren(...rows.map((r) => {
     const pw = el('input', { type: 'password', autocomplete: 'new-password', placeholder: r.has_password ? '••••••••' : 'Sin contraseña',
       'aria-label': 'Contraseña',
-      onchange: async (e) => { if (!e.target.value) return; try { Object.assign(r, (await update(r.id, { password: e.target.value })).credential); e.target.value = ''; e.target.placeholder = '••••••••'; mark('Guardada ✓ (cifrada)', 'ok'); draw(); } catch (er) { mark(er.message, 'bad'); } } });
+      onchange: async (e) => { if (!e.target.value) return; try { Object.assign(r, (await update(r.id, { password: e.target.value })).credential); e.target.value = ''; e.target.placeholder = '••••••••'; mark('Guardado ✓', 'ok'); draw(); } catch (er) { mark(er.message, 'bad'); } } });
     const pwCell = el('div', { class: 'pwcell' }, pw);
     if (mode === 'team' && r.has_password && canSee) {
       pwCell.append(el('button', { class: 'btn ghost small', onclick: () => doReveal(r, false, pw) }, 'Ver'),
@@ -145,29 +488,36 @@ export function renderCredentials(root, { mode, services, list, create, update, 
       ? el('select', { onchange: async (e) => { try { Object.assign(r, (await update(r.id, { status: e.target.value })).credential); mark('Guardado ✓', 'ok'); draw(); } catch (er) { mark(er.message, 'bad'); } } },
         ['pendiente', 'recibida', 'verificada'].map((s) => el('option', { value: s, selected: r.status === s }, s)))
       : el('span', { class: 'pill ' + STATUS[r.status] }, r.status);
-    return el('tr', {},
-      el('td', {}, el('strong', {}, r.service)),
-      el('td', {}, cell(r, 'company', 'Empresa')), el('td', {}, cell(r, 'username', 'Usuario')),
-      el('td', {}, cell(r, 'email', 'Correo', 'email')), el('td', {}, pwCell),
-      el('td', {}, cell(r, 'url', 'Enlace de acceso', 'url')), el('td', {}, cell(r, 'notes', 'Notas')),
-      el('td', {}, st),
-      el('td', {}, remove ? el('button', { class: 'btn ghost small', title: 'Borrar fila', onclick: async () => {
-        if (!confirm(`¿Borrar la fila de ${r.service}?`)) return;
-        try { await remove(r.id); rows = rows.filter((x) => x.id !== r.id); draw(); } catch (er) { mark(er.message, 'bad'); } } }, '🗑') : ''));
+    const field = (label, control) => el('label', {}, label, control);
+    return el('details', { class: 'cred', open: openIds.has(r.id), ontoggle: (e) => (e.target.open ? openIds.add(r.id) : openIds.delete(r.id)) },
+      el('summary', {},
+        el('strong', { class: 'svc' }, r.service),
+        el('span', { class: 'muted sum' }, [r.company, r.username || r.email].filter(Boolean).join(' · ')),
+        el('span', { class: 'grow' }),
+        el('span', { class: 'pill ' + (r.has_password ? 'ok' : 'warn') }, r.has_password ? 'contraseña guardada' : 'sin contraseña'),
+        el('span', { class: 'pill ' + STATUS[r.status] }, r.status),
+        el('span', { class: 'chev' }, '›')),
+      el('div', { class: 'credgrid' },
+        field('Empresa', cell(r, 'company', 'Empresa')), field('Usuario', cell(r, 'username', 'Usuario')),
+        field('Correo', cell(r, 'email', 'Correo', 'email')), field('Contraseña', pwCell),
+        field('Enlace de acceso', urlRow(cell(r, 'url', 'Enlace de acceso', 'url'))), field('Notas', cell(r, 'notes', 'Notas')),
+        mode === 'team' ? field('Estado', st) : '',
+        remove ? el('div', { class: 'credfoot' }, el('button', { class: 'btn ghost small', onclick: async () => {
+          if (!(await askConfirm({ title: 'Borrar credencial', text: `¿Borrar la fila de ${r.service}? No se puede deshacer.`, ok: 'Borrar', danger: true }))) return;
+          try { await remove(r.id); rows = rows.filter((x) => x.id !== r.id); draw(); } catch (er) { mark(er.message, 'bad'); } } }, 'Borrar esta credencial')) : ''));
   }));
 
   const svc = el('select', {}, el('option', { value: '' }, 'Añadir servicio…'), services.map((s) => el('option', { value: s }, s)), el('option', { value: '__otro' }, 'Otro…'));
   svc.addEventListener('change', async () => {
     let name = svc.value; svc.value = '';
-    if (name === '__otro') name = (prompt('Nombre del servicio') || '').trim();
+    if (name === '__otro') name = (await askText({ title: 'Añadir servicio', label: 'Nombre del servicio', ok: 'Añadir' })) || '';
     if (!name) return;
-    try { rows.push((await create({ service: name })).credential); draw(); } catch (e) { mark(e.message, 'bad'); }
+    try { const c = (await create({ service: name })).credential; rows.push(c); openIds.add(c.id); draw(); } catch (e) { mark(e.message, 'bad'); }
   });
 
   root.replaceChildren(
     mode === 'client' ? el('div', { class: 'intro' }, 'Preferimos acceso delegado (como socio o administrador) y nunca os pediremos la contraseña si existe esa opción. Si no es posible, podéis guardarla aquí: se cifra al instante y nadie del exterior puede leerla. Vosotros tampoco podréis verla de nuevo, solo cambiarla.') : '',
-    el('div', { class: 'scroll' }, el('table', { class: 't' },
-      el('thead', {}, el('tr', {}, ['Servicio', 'Empresa', 'Usuario', 'Correo', 'Contraseña', 'Acceso', 'Notas', 'Estado', ''].map((h) => el('th', {}, h)))), body)),
-    el('div', { class: 'row', style: 'margin-top:10px' }, svc, status));
+    body,
+    el('div', { class: 'row', style: 'margin-top:10px' }, svc, el('span', { class: 'grow' }), el('button', { class: 'btn ghost small', onclick: () => { rows.forEach((r) => openIds.add(r.id)); draw(); } }, 'Abrir todas'), el('button', { class: 'btn ghost small', onclick: () => { openIds.clear(); draw(); } }, 'Cerrar todas'), status));
   list().then((r) => { rows = r.credentials; draw(); });
 }

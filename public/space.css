@@ -292,6 +292,13 @@ body.cform .cgroup > h3, .pvpage .cgroup > h3 { font-size: 14px; }
 .appic { width: 20px; height: 20px; display: block; } .apptile .appic { width: 22px; height: 22px; }
 .appbtn:hover { border-color: var(--accent); } .appbtn:focus-visible { outline: none; box-shadow: var(--ring); }
 .appbtn.off .appic { filter: grayscale(1); opacity: .55; } .appbtn.off:hover .appic { opacity: .7; }
+/* Accesos rápidos con icono en la cabecera de la ficha (misma caja que los de ClickUp y Drive) */
+.ibtn { color: var(--ink); cursor: pointer; padding: 0; font: inherit; }
+.ibtn .ic { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ibtn.primary { background: var(--agency); border-color: var(--agency); color: #fff; }
+:root[data-theme="dark"] .ibtn.primary { color: #0b1220; }
+.ibtn.off { color: var(--muted); border-style: dashed; }
+.ibtn.primary:hover { filter: brightness(1.08); }
 .applink { display: flex; align-items: center; gap: 10px; } .applink .urlrow { flex: 1; min-width: 0; max-width: none; }
 
 /* Lista de clientes: las puertas como iconos y la categoría alineada a la derecha */

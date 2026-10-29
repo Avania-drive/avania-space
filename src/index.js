@@ -304,7 +304,13 @@ app.post('/api/invitacion/:token', wrap(async (req, res) => {
 }));
 
 // ───────── Formulario y clientes ─────────
-app.get('/api/formdef', (_req, res) => res.json({ form: FORM, blocks: BLOCKS, services: SERVICES, suggested: SUGGESTED }));
+// El equipo recibe el formulario entero; el cliente, sin las secciones ni los campos que son solo de la agencia (ni su título ni su texto).
+app.get('/api/formdef', (req, res) => {
+  if (req.user) return res.json({ form: FORM, blocks: BLOCKS, services: SERVICES, suggested: SUGGESTED });
+  const form = FORM.filter((x) => !TEAM_ONLY.has(x.key)).map((x) => ({ ...x, groups: x.groups.map((g) => ({ ...g, fields: g.fields.filter((f) => !agencyField(f)) })) }));
+  const blocks = BLOCKS.map((b) => ({ ...b, sections: b.sections.filter((k) => !TEAM_ONLY.has(k)) })).filter((b) => b.sections.length);
+  res.json({ form, blocks, services: SERVICES, suggested: SUGGESTED });
+});
 
 async function sectionsOf(clientId) {
   const r = await q('select section, data from client_sections where client_id = $1', [clientId]);

@@ -75,7 +75,7 @@ export const FORM = [
   },
   {
     key: 'negocio', num: '2', title: 'Objetivos y datos para medir', owner: 'team',
-    intro: 'Lo que acordamos para medir si la campaña funciona: cuánto vale un cliente nuevo y qué objetivos se persiguen cada mes. Con estos datos calculamos el coste por cita, por cliente y el retorno, no solo los leads. Lo rellena AVANIA y el cliente lo ve en solo lectura.',
+    intro: 'Lo que acordamos para medir si la campaña funciona: cuánto vale un cliente nuevo y qué objetivos se persiguen cada mes. Con estos datos calculamos el coste por cita, por cliente y el retorno, no solo los leads. Lo rellena y lo ve solo el equipo de AVANIA: el cliente no tiene acceso a esta sección.',
     groups: [
       { title: '0.0 Qué vale un cliente nuevo', fields: [
         { k: 'valor_medio', label: 'Valor medio de un cliente nuevo (€)', hint: 'Lo que factura de media un cliente nuevo: tratamiento, póliza, pedido, matrícula… Es la base para calcular el retorno de la inversión.', type: 'number', owner: 'team' },
@@ -339,8 +339,8 @@ export const BLOCKS = [
   }));
 }
 
-// «Nuestros análisis» y «Objetivos» los rellena AVANIA y el cliente los ve en solo lectura (el pipeline y sus etapas son técnicos y no se enseñan).
-for (const k of ['oferta', 'negocio']) {
+// «Nuestros análisis» lo rellena AVANIA y el cliente lo ve en solo lectura. «Objetivos y datos para medir» (negocio) es solo del equipo: el cliente no lo ve.
+for (const k of ['oferta']) {
   const sec = FORM.find((x) => x.key === k);
   sec.shared = true;
   for (const f of sec.groups.flatMap((g) => g.fields)) if (!['pipeline_id', 'etapas'].includes(f.k)) f.shared = true;

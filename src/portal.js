@@ -155,7 +155,13 @@ export function mountPortal(app, d) {
   app.get('/api/p/kpis', ...portal, wrap(async (req, res) => {
     try {
       const k = await kpisFor(req.client.id, { sections: await sectionsOf(req.client.id) });
-      if (k) { const { sin_atribuir, conocidos, ...pub } = k; return res.json({ connected: true, kpis: pub }); }
+      if (k) {
+        // Objetivos, valor medio y etapas vienen de «Objetivos y datos para medir», que es solo del equipo: el cliente no ve nada que salga de ahí
+        // (ni los objetivos, ni la facturación estimada con el valor medio, ni el retorno que se calcula con ella).
+        const { sin_atribuir, conocidos, objetivos, valor_medio, mapeo, ...pub } = k;
+        if (pub.facturado?.estimado) { pub.facturado = null; if (pub.coste) pub.coste = { ...pub.coste, roas: null }; }
+        return res.json({ connected: true, kpis: { ...pub, objetivos: [] } });
+      }
       res.json({ connected: false });
     } catch { res.json({ connected: false, unavailable: true }); }
   }));

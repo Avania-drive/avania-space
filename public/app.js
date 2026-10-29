@@ -155,12 +155,20 @@ ICONS.ojo = '<path d="M2 12s3.600-7 10-7 10 7 10 7-3.600 7-10 7S2 12 2 12z"/><ci
 ICONS.panel = '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>';
 ICONS.config = '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.700 17.700l2.100 2.100M2 12h3M19 12h3M4.200 19.800l2.100-2.100M17.700 6.300l2.100-2.100"/>';
 ICONS.personas = ICONS.equipo; ICONS.horarios = ICONS.fechas; ICONS.notas = '<path d="M5 3h14v14l-4 4H5zM15 21v-4h4M8 8h8M8 12h6"/>'; ICONS.documentos = ICONS.materiales;
+ICONS.embudo = '<path d="M3 4h18l-7 8.500V19l-4 2v-8.500z"/>';
 ICONS.chevd = '<path d="M6 9l6 6 6-6"/>'; ICONS.chevu = '<path d="M6 15l6-6 6 6"/>';
 function icon(k) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('class', 'ic'); s.setAttribute('aria-hidden', 'true');
   s.innerHTML = ICONS[k] || ICONS.doc;
   return s;
+}
+// Botón cuadrado pequeño con icono para la cabecera de la ficha. `href` = enlace (`external` abre otra pestaña); `onclick` = botón.
+function iconBtn(ic, label, { href, external = false, onclick, cls = '' } = {}) {
+  const attrs = { class: `appbtn ibtn ${cls}`.trim(), title: label, 'aria-label': label };
+  return href
+    ? el('a', { ...attrs, href, ...(external ? { target: '_blank', rel: 'noopener' } : {}) }, icon(ic))
+    : el('button', { ...attrs, type: 'button', onclick }, icon(ic));
 }
 const hue = (t) => [...String(t)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
 const sideCtx = el('div', { class: 'sidectx' });
@@ -709,10 +717,11 @@ async function clientView(id, tab) {
   view.replaceChildren(
     el('div', { class: 'row', style: 'margin-bottom:12px' },
       el('a', { href: '#/', class: 'btn ghost small' }, '← Clientes'), logoButton(client, () => route()), el('h1', {}, client.name), client.category ? catPill(client.category, client.category_color) : '', el('span', { class: 'grow' }),
-      canPreview ? el('a', { class: 'btn small pvbtn', href: `#/c/${id}/${t.key}?vista=cliente`, title: 'Ver esta ficha tal como la ve el cliente' }, icon('ojo'), 'Vista de cliente') : '',
+      // Accesos rápidos: botones pequeños con icono (el nombre sale al pasar el ratón y lo lee el lector de pantalla).
+      canPreview ? iconBtn('ojo', 'Vista de cliente: ver esta ficha tal como la ve el cliente', { href: `#/c/${id}/${t.key}?vista=cliente`, cls: 'primary' }) : '',
+      iconBtn('enlace', 'Copiar enlace del cliente', { onclick: () => navigator.clipboard.writeText(link).then(() => toast('Enlace del cliente copiado')) }),
+      funnelsUrl ? iconBtn('embudo', 'Abrir en Avania Funnels: la subcuenta de este cliente', { href: funnelsUrl, external: true }) : iconBtn('embudo', 'Falta el ID de la subcuenta de Avania Funnels: añadirlo', { href: `#/c/${id}/proyecto`, cls: 'off' }),
       appBtn('clickup', toUrl(pr.enlace_clickup)), appBtn('drive', toUrl(pr.enlace_drive)),
-      el('button', { type: 'button', class: 'btn ghost small', onclick: () => navigator.clipboard.writeText(link).then(() => toast('Enlace del cliente copiado')) }, icon('enlace'), 'Copiar enlace del cliente'),
-      funnelsUrl ? el('a', { class: 'btn small', href: funnelsUrl, target: '_blank', rel: 'noopener', title: 'Abrir la subcuenta de este cliente en Avania Funnels' }, 'Abrir en Avania Funnels ↗') : el('a', { class: 'btn ghost small', href: `#/c/${id}/proyecto`, title: 'Falta el ID de la subcuenta' }, 'Añadir ID de subcuenta'),
       helpButton(ayuda[t.key], t.title) || ''),
     el('div', { class: 'row', style: 'margin-bottom:18px' }, stepper, el('span', { class: 'grow' }),
       el('div', { class: 'row', title: 'Campos del cliente rellenados' }, el('span', { class: 'muted' }, 'Cliente'), bar(progress.pct, 'client'), el('span', { class: 'num' }, `${progress.pct}%`)),

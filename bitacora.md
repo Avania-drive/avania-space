@@ -376,3 +376,9 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 - Revisión: ninguno de los 5 clientes tenía filas de «Google Analytics» ni «Google Tag Manager» en la Bóveda. En el formulario («Web y Google»), SEDI y la Clínica de Paula Fernández marcan «¿Los tenéis dados de alta?» pero ningún cliente ha rellenado el enlace de Analytics ni el ID de GTM.
 - Se han creado las dos filas, en estado `pendiente` y sin datos, en los 5 clientes (10 filas), para poder solicitarlas desde la pestaña de credenciales.
 - `SUGGESTED` (src/formdef.js) ahora incluye ambos servicios: los clientes nuevos las traen de serie (requiere reiniciar `avania-space`).
+
+## 29-oct — Preguntas de tratamientos, precios y primera visita en «La empresa»
+- Revisado: ninguna de estas preguntas estaba en los formularios. Solo había «Ofertas y servicios» (con precio) en Mercado y el horario general de la empresa en Horarios y equipo.
+- Nueva fila 1.5 «Tratamientos, precios y primera visita» en la sección Empresa (`clinica`): `tratamientos` (tabla tratamiento / precio o rango / notas), `financiacion` + `financiacion_detalle`, `primera_visita` (gratuita / de pago / depende) + `primera_incluye` (escáner 3D, simulación…) y `referentes` (casos, nivel Invisalign, máster o título, reseñas y nota en Google). Marcados `dental`: solo cuentan en el progreso de las empresas dentales.
+- En 1.4 Teléfonos, WhatsApp y correos: columna «Horario de atención» en las tablas de teléfonos y WhatsApp, y pregunta `fuera_horario` («¿Qué pasa si escriben o llaman cuando nadie atiende?»). La web ya estaba en Datos de la empresa.
+- Las claves nuevas no tocan los datos ya guardados. Reiniciado `avania-space`.

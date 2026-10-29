@@ -371,3 +371,8 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 - Un cliente nuevo sin nombre ya no se llama «Clínica de …»: usa el nombre del contacto tal cual.
 - No se tocó por dentro: la clave interna de la sección (`clinica`), el nombre de la subcuenta «AVANIA Clinical Dental» y el campo de Funnels «¿Cuál es tu rol en la clínica?», que se llaman así en origen.
 - Quedan palabras de ámbito dental (pacientes, doctor, gabinetes) en el formulario; pendiente de decidir si también se generalizan.
+
+## 29-oct — Accesos de Google Analytics y Tag Manager en la Bóveda
+- Revisión: ninguno de los 5 clientes tenía filas de «Google Analytics» ni «Google Tag Manager» en la Bóveda. En el formulario («Web y Google»), SEDI y la Clínica de Paula Fernández marcan «¿Los tenéis dados de alta?» pero ningún cliente ha rellenado el enlace de Analytics ni el ID de GTM.
+- Se han creado las dos filas, en estado `pendiente` y sin datos, en los 5 clientes (10 filas), para poder solicitarlas desde la pestaña de credenciales.
+- `SUGGESTED` (src/formdef.js) ahora incluye ambos servicios: los clientes nuevos las traen de serie (requiere reiniciar `avania-space`).

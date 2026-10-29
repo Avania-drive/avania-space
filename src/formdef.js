@@ -377,7 +377,7 @@ export const SERVICES = [
   'WhatsApp Business', 'Google Analytics', 'Google Tag Manager', 'Google My Business', 'Software de citas',
 ];
 // Filas que se le sugieren al cliente en la pestaña de credenciales.
-export const SUGGESTED = ['Hosting', 'Web / CMS', 'Meta Business Manager', 'Instagram', 'WhatsApp Business'];
+export const SUGGESTED = ['Hosting', 'Web / CMS', 'Meta Business Manager', 'Instagram', 'WhatsApp Business', 'Google Analytics', 'Google Tag Manager'];
 
 const fieldsOf = (s) => s.groups.flatMap((g) => g.fields);
 

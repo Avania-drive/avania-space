@@ -67,7 +67,7 @@ export const FORM = [
         { k: 'tratamientos', label: 'Tratamientos y precios', hint: 'Qué ofrecéis y cuánto cuesta cada uno. Por ejemplo, en ortodoncia: invisible (Invisalign u otra marca), brackets metálicos, estéticos o linguales, ortodoncia infantil o interceptiva y retenedores.', type: 'table', dental: true, cols: [{ k: 'tratamiento', label: 'Tratamiento' }, { k: 'precio', label: 'Precio o rango' }, { k: 'notas', label: 'Notas' }] },
         { k: 'financiacion', label: '¿Ofrecéis pago a plazos o cuota mensual?', hint: 'En ortodoncia suele ser lo que decide la compra', type: 'select', options: ['Sí', 'No', 'Solo en algunos tratamientos'], dental: true },
         { k: 'financiacion_detalle', label: 'Condiciones de la financiación', hint: 'Cuota aproximada, plazos, financiera, entrada…', type: 'textarea', dental: true, optional: true },
-        { k: 'primera_visita', label: 'La primera visita, ¿es gratuita o de pago?', type: 'select', options: ['Gratuita', 'De pago', 'Depende del tratamiento'], dental: true },
+        { k: 'primera_visita', label: 'La primera visita, ¿es gratuita o de pago?', type: 'select', options: ['Gratuita', 'De pago', 'Depende'], dental: true },
         { k: 'primera_incluye', label: '¿Qué incluye la primera visita?', hint: 'Precio si es de pago; si incluye escáner 3D, simulación del resultado, radiografía, presupuesto…', type: 'textarea', dental: true },
         { k: 'referentes', label: 'Pruebas de que sois referentes', hint: 'Número de casos tratados, nivel de proveedor Invisalign, máster o título de especialista del doctor o la doctora, número de reseñas y nota en Google…', type: 'textarea', dental: true },
       ] },

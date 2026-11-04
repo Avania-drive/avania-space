@@ -6,6 +6,9 @@ import { parseCookies, tooMany, requireRole } from './auth.js';
 import { sendMail, PUBLIC_URL } from './mailer.js';
 import { driveListing } from './drive.js';
 import { kpisFor } from './kpis.js';
+import { viewOn, viewMap, denyView, TEAM_ONLY } from './visibility.js';
+import { zonaStudy } from './zona.js';
+import { FORM } from './formdef.js';
 
 export const CCOOKIE = 'sp_client';
 const DAYS = 14;
@@ -98,7 +101,7 @@ export function mountPortal(app, d) {
   // ───────── Su espacio ─────────
   app.get('/api/p/me', ...portal, wrap(async (req, res) => {
     const logo = (await q('select extract(epoch from updated_at)::bigint v from client_logos where client_id = $1', [req.client.id])).rows[0];
-    res.json({ user: { name: req.cu.name, email: req.cu.email, role: req.cu.role }, client: { name: req.client.name, logo: logo ? logo.v : null } });
+    res.json({ user: { name: req.cu.name, email: req.cu.email, role: req.cu.role }, client: { name: req.client.name, logo: logo ? logo.v : null }, views: viewMap(req.client), info: FORM.filter((x) => TEAM_ONLY.has(x.key) && viewOn(req.client, x.key)).map((x) => x.key) });
   }));
 
   app.post('/api/p/password', ...portal, wrap(async (req, res) => {
@@ -129,10 +132,11 @@ export function mountPortal(app, d) {
       client: { name: c.name, manager: c.account_manager || null },
       role, dental: tpl.dental, ...(({ pct, areas }) => ({ progress: pct, areas }))(forClientProgress(progress(sections, tpl.allowed, tpl.dental))),
       next: todo.map((g) => ({ key: g.key, ask: g.ask, why: g.why, section: g.section })),
-      tasks: forClientTasks(tasksOf(sections, cr, { allowed: tpl.allowed, dental: tpl.dental })).filter((t) => isResp || t.section !== 'credenciales'), timeline: timelineOf(sections), fases: fasesOf(sections),
+      tasks: forClientTasks(tasksOf(sections, cr, { allowed: tpl.allowed, dental: tpl.dental })).filter((t) => (isResp || t.section !== 'credenciales') && viewOn(c, t.section === 'proceso' ? 'plan' : t.section)),
+      timeline: viewOn(c, 'plan') ? timelineOf(sections) : [], fases: viewOn(c, 'plan') ? fasesOf(sections) : null,
       links: links.map((l) => ({ id: l.id, type: l.type, has_access: l.has_access, open: l.url || l.login_url || types[l.type] || null, requested: reqs.has(l.id) })),
       notes: (await q('select id, body, author, created_at from client_notes where client_id = $1 and visible order by created_at desc limit 20', [c.id])).rows,
-      drive: /^https?:\/\//i.test(drive) ? drive : null,
+      drive: viewOn(c, 'documentos') && /^https?:\/\//i.test(drive) ? drive : null, views: viewMap(c),
       contact: process.env.MAIL_REPLY_TO || null,
     };
   }
@@ -145,20 +149,43 @@ export function mountPortal(app, d) {
     res.json(await homeFor(c, req.query.role === 'miembro' ? 'miembro' : 'responsable'));
   }));
 
+  // Mapa y estudio de la zona (solo si el superadministrador activó «Ver cliente» en Área de influencia).
+  app.get('/api/p/zona', ...portal, wrap(async (req, res) => {
+    if (!viewOn(req.client, 'zona')) return denyView(res);
+    const all = await sectionsOf(req.client.id), cl = all.clinica || {}, zn = all.zona || {};
+    if (!String(zn.localidades || '').trim() && !String(cl.direccion || cl.ciudad || '').trim()) return res.json({ empty: true });
+    try { res.json(await zonaStudy({ direccion: cl.direccion, ciudad: cl.ciudad, radio: zn.radio, localidades: zn.localidades })); }
+    catch (e) { res.status(502).json({ error: `No se pudo preparar el estudio de la zona: ${e.message}` }); }
+  }));
+
+  // Secciones internas de la agencia que el superadministrador ha decidido enseñar al cliente (solo lectura, sin contraseñas).
+  app.get('/api/p/shared', ...portal, wrap(async (req, res) => {
+    const all = await sectionsOf(req.client.id);
+    const keys = FORM.filter((x) => TEAM_ONLY.has(x.key) && viewOn(req.client, x.key)).map((x) => x.key);
+    const hide = (f) => /pass|secret|clave|token/i.test(f.type || '') || /pass|secret|clave|token/i.test(f.k || '');
+    res.json({ sections: keys.map((k) => {
+      const def = FORM.find((x) => x.key === k);
+      const fields = new Set(def.groups.flatMap((g) => g.fields).filter(hide).map((f) => f.k));
+      return { def: { ...def, groups: def.groups.map((g) => ({ ...g, fields: g.fields.filter((f) => !hide(f)) })) }, data: Object.fromEntries(Object.entries(all[k] || {}).filter(([f]) => !fields.has(f))) };
+    }) });
+  }));
+
   // Archivos de su carpeta de Drive (nombre y carpeta); sin avisos técnicos, que son cosa de la agencia.
   app.get('/api/p/drive', ...portal, wrap(async (req, res) => {
+    if (!viewOn(req.client, 'documentos')) return denyView(res);
     const r = await driveListing((await sectionsOf(req.client.id)).proyecto?.enlace_drive);
     res.json(r.state === 'ok' ? r : { state: r.state === 'sin_carpeta' ? 'sin_carpeta' : 'no_disponible' });
   }));
 
   // Resultados del cliente (los mismos KPIs que ve la agencia, sin nombres ni datos de contacto de los leads).
   app.get('/api/p/kpis', ...portal, wrap(async (req, res) => {
+    if (!viewOn(req.client, 'resultados')) return denyView(res);
     try {
       const k = await kpisFor(req.client.id, { sections: await sectionsOf(req.client.id) });
       if (k) {
         // Objetivos, valor medio y etapas vienen de «Objetivos y datos para medir», que es solo del equipo: el cliente no ve nada que salga de ahí
         // (ni los objetivos, ni la facturación estimada con el valor medio, ni el retorno que se calcula con ella).
-        const { sin_atribuir, conocidos, objetivos, valor_medio, mapeo, ...pub } = k;
+        const { sin_anuncio, objetivos, valor_medio, mapeo, ...pub } = k;
         if (pub.facturado?.estimado) { pub.facturado = null; if (pub.coste) pub.coste = { ...pub.coste, roas: null }; }
         return res.json({ connected: true, kpis: { ...pub, objetivos: [] } });
       }

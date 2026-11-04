@@ -5,19 +5,22 @@ import path from 'node:path';
 import QRCode from 'qrcode';
 import { fileURLToPath } from 'node:url';
 import { q } from './db.js';
+import { ssoList } from './sso.js';
 import { encrypt, decrypt, hashPassword, verifyPassword, randomToken, sha256 } from './crypto.js';
 import {
   COOKIE, parseCookies, createSession, clearCookie, loadSession, requireUser, requireReady,
   requireRole, canSeePasswords, totp, publicUser, tooMany, requirePasswordRecent, REAUTH_MINUTES,
 } from './auth.js';
 import { FORM, BLOCKS, SERVICES, SUGGESTED, progress, gates, sanitizeSection } from './formdef.js';
-import { fetchContact, prefillClinica, ID_RE, variantFor } from './funnels.js';
+import { ID_RE, variantFor } from './funnels.js';
 import { sendInvite } from './invite.js';
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { PUBLIC_URL, sendHtml } from './mailer.js';
-import { driveListing } from './drive.js';
+import { driveListing, folderIdOf, createFolder, rootId as driveRootId } from './drive.js';
+import { viewOn, viewMap, VIEW_KEYS, denyView } from './visibility.js';
 import { tasksOf, timelineOf, fasesOf, cleanFases, fasesBase } from './plan.js';
 import { buildReport, REPORT_TO } from './report.js';
+import { zonaStudy } from './zona.js';
 import { loadClientSession, portalGate, mountPortal } from './portal.js';
 import { mountVault } from './vault.js';
 import { mountKpis, syncStages, forget as forgetKpis } from './kpis.js';
@@ -36,11 +39,12 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   // El formulario del cliente se abre dentro de Avania Funnels (enlace del submenú); el resto de la app no se puede enmarcar.
   if (req.path.startsWith('/f/') || req.path.startsWith('/c/')) res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://*.avania.marketing https://*.leadconnectorhq.com https://*.gohighlevel.com");
+  else if (/^\/api\/clients\/[^/]+\/files\/[^/]+$/.test(req.path)) res.setHeader('X-Frame-Options', 'SAMEORIGIN');   // la vista previa de un documento subido se abre en un visor dentro de Space
   else res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
   // Las escrituras solo se aceptan como JSON (junto con SameSite=Strict, frena el CSRF).
-  if (req.method !== 'GET' && req.path.startsWith('/api/') && !req.is('application/json') && Number(req.headers['content-length'] || 0) > 0)
+  if (req.method !== 'GET' && req.path.startsWith('/api/') && !req.is('application/json') && !(req.method === 'POST' && /^\/api\/clients\/[^/]+\/files$/.test(req.path) && req.get('x-space-upload') === '1') && Number(req.headers['content-length'] || 0) > 0)   // la subida de archivos va en binario con una cabecera propia (una web ajena no puede enviarla sin permiso)
     return res.status(415).json({ error: 'Solo JSON' });
   next();
 });
@@ -318,6 +322,13 @@ async function sectionsOf(clientId) {
 }
 
 async function saveSection(client, key, data, actor) {
+  // Cada cliente, su carpeta de Drive: la misma carpeta no puede estar enlazada en dos clientes (cada uno vería lo del otro).
+  const fid = key === 'proyecto' ? folderIdOf(data.enlace_drive) : null;
+  if (fid && fid === driveRootId()) throw Object.assign(new Error('Esa es la carpeta de todos los clientes: pon la carpeta MARKETING de este cliente.'), { status: 400 });
+  if (fid) {
+    const dup = (await q("select c.name from client_sections s join clients c on c.id = s.client_id where s.section = 'proyecto' and s.client_id <> $1 and s.data->>'enlace_drive' like $2 limit 1", [client.id, `%${fid}%`])).rows[0];
+    if (dup) throw Object.assign(new Error(`Esa carpeta de Drive ya está asignada a otro cliente (${dup.name}). Cada cliente necesita la suya.`), { status: 400 });
+  }
   const cur = (await q('select data from client_sections where client_id = $1 and section = $2', [client.id, key])).rows[0]?.data || {};
   const merged = { ...cur, ...data };
   await q(`insert into client_sections (client_id, section, data, updated_by) values ($1,$2,$3,$4)
@@ -397,25 +408,23 @@ app.post('/api/clients', ...staff, wrap(async (req, res) => {
 
 // Alta por ID del contacto en Avania Funnels (el cliente en el CRM de AVANIA): lee sus datos y precarga la ficha.
 app.post('/api/clients/from-funnels', ...staff, wrap(async (req, res) => {
-  const contactId = String(req.body.contactId || '').trim();
-  if (!ID_RE.test(contactId)) return res.status(400).json({ error: 'El ID no parece válido (letras y números, sin espacios).' });
-  const dup = (await q('select id, name from clients where funnels_contact_id = $1', [contactId])).rows[0];
-  if (dup) return res.status(409).json({ error: `Ese contacto ya está dado de alta como «${dup.name}».`, id: dup.id });
+  const location = String(req.body.locationId || '').trim();
+  if (!ID_RE.test(location)) return res.status(400).json({ error: 'El ID de la subcuenta no parece válido (letras y números, sin espacios).' });
+  const dup = (await q('select id, name from clients where funnels_contact_id = $1', [location])).rows[0];
+  if (dup) return res.status(409).json({ error: `Esa subcuenta ya está dada de alta como «${dup.name}».`, id: dup.id });
+  const name = String(req.body.name || '').trim().slice(0, 200);
+  if (!name) return res.status(400).json({ error: 'Escribe el nombre de la empresa.' });
   const category = String(req.body.category || '').trim().slice(0, 60);
-  if (!category) return res.status(400).json({ error: 'Elige la categoría: de ella depende en qué subcuenta de Avania Funnels se busca.' });
-  const variant = variantFor(category);
-  const contact = await fetchContact(contactId, variant);
-  const pre = prefillClinica(contact);
-  const dental = variant === 'dental';
-  const name = (pre.clinica.nombre_comercial || (pre.full ? (pre.full) : '')).slice(0, 200);
-  if (!name) return res.status(400).json({ error: 'Ese contacto no tiene nombre en Avania Funnels.' });
+  if (!category) return res.status(400).json({ error: 'Elige la categoría.' });
+  const city = String(req.body.city || '').trim().slice(0, 120) || null;
+  // El ID de la subcuenta hace de identificador del cliente en Funnels (enlace del submenú /c/{{location.id}}).
   const c = (await q('insert into clients (name, token, city, funnels_contact_id) values ($1,$2,$3,$4) returning *',
-    [name, randomToken(24), (pre.clinica.ciudad || '').slice(0, 120) || null, contactId])).rows[0];
+    [name, randomToken(24), city, location])).rows[0];
   await q('insert into categories (name) values ($1) on conflict do nothing', [category]);
-  await saveSection(c, 'proyecto', { categoria: category, funnels_location: String(contact.locationId || '') }, req.user.email);
-  await saveSection(c, 'clinica', sanitizeSection('clinica', { ...pre.clinica, nombre_comercial: pre.clinica.nombre_comercial || name, responsables: pre.responsables }, { team: true }) || {}, req.user.email);
+  await saveSection(c, 'proyecto', { categoria: category, funnels_location: location }, req.user.email);
+  await saveSection(c, 'clinica', sanitizeSection('clinica', { nombre_comercial: name, ...(city ? { ciudad: city } : {}) }, { team: true }) || {}, req.user.email);
   for (const s of SUGGESTED) await q('insert into credentials (client_id, service, updated_by) values ($1,$2,$3)', [c.id, s, req.user.email]);
-  res.json({ client: c, prefilled: [...Object.keys(pre.clinica), ...(pre.responsables.length ? ['responsables'] : [])] });
+  res.json({ client: c });
 }));
 
 // Zona restringida (Web y Google, Meta, credenciales): el equipo solo recibe esos datos tras volver a escribir la contraseña de su cuenta.
@@ -442,7 +451,7 @@ app.get('/api/clients/:id', ...staff, wrap(async (req, res) => {
   // Sin contraseña reciente solo salen las marcas «lo hará Avania» de esas secciones (sin ningún valor).
   const open = recent(req);
   const shown = open ? sections : Object.fromEntries(Object.entries(sections).map(([k, v]) => [k, RESTRICTED.has(k) ? { _avania: v._avania || [] } : v]));
-  res.json({ client: c, statuses: statusesOf(stRow?.statuses), restricted: !open, sections: shown, meta, progress: progress(sections, tpl.allowed, tpl.dental), gates: gates(sections, cr, tpl.allowed), allowed: tpl.allowed ? [...tpl.allowed] : null, dental: tpl.dental,
+  res.json({ client: c, views: viewMap(c), statuses: statusesOf(stRow?.statuses), restricted: !open, sections: shown, meta, progress: progress(sections, tpl.allowed, tpl.dental), gates: gates(sections, cr, tpl.allowed), allowed: tpl.allowed ? [...tpl.allowed] : null, dental: tpl.dental,
     tasks: tasksOf(sections, cr, { allowed: tpl.allowed, dental: tpl.dental }), timeline: timelineOf(sections, { includeEmpty: true }), fases: fasesOf(sections), onboarding: onboardingState(c, sections) });
 }));
 
@@ -544,6 +553,37 @@ app.post('/api/clients/:id/notes', ...staff, wrap(async (req, res) => {
     [req.params.id, body, req.body.visible === true, req.user.name || req.user.email]);
   res.json({ note: r.rows[0] });
 }));
+// ───────── Documentos subidos a la ficha del cliente ─────────
+const FILE_MAX = 15 * 1024 * 1024;
+const INLINE_OK = /^(application\/pdf|image\/(png|jpeg|webp|gif)|text\/plain)$/;
+const cleanName = (n) => String(n || 'documento').replace(/[\\/\u0000-\u001f"]/g, '_').trim().slice(0, 180) || 'documento';
+app.get('/api/clients/:id/files', ...staff, wrap(async (req, res) => {
+  if (!(await noteOwner(req, res))) return;
+  res.json({ files: (await q('select id, name, mime, size, uploaded_by, created_at from client_files where client_id = $1 order by created_at desc', [req.params.id])).rows });
+}));
+app.post('/api/clients/:id/files', ...staff, express.raw({ type: () => true, limit: FILE_MAX }), wrap(async (req, res) => {
+  if (!(await noteOwner(req, res))) return;
+  const buf = req.body;
+  if (!Buffer.isBuffer(buf) || !buf.length) return res.status(400).json({ error: 'El archivo está vacío' });
+  const mime = String(req.query.type || req.get('content-type') || '').split(';')[0].trim().toLowerCase().slice(0, 120) || 'application/octet-stream';
+  const r = await q('insert into client_files (client_id, name, mime, size, data, uploaded_by) values ($1,$2,$3,$4,$5,$6) returning id, name, mime, size, uploaded_by, created_at',
+    [req.params.id, cleanName(req.query.name), mime, buf.length, buf, req.user.name || req.user.email]);
+  res.json({ file: r.rows[0] });
+}));
+app.get('/api/clients/:id/files/:fid', ...staff, wrap(async (req, res) => {
+  if (!isUuid(req.params.id) || !isUuid(req.params.fid)) return res.status(400).json({ error: 'Id no válido' });
+  const f = (await q('select name, mime, data from client_files where id = $1 and client_id = $2', [req.params.fid, req.params.id])).rows[0];
+  if (!f) return res.status(404).json({ error: 'No existe' });
+  const inline = INLINE_OK.test(f.mime) && req.query.download !== '1';
+  res.set({ 'Content-Type': inline ? f.mime : 'application/octet-stream', 'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.name)}`, 'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'", 'Cache-Control': 'private, max-age=300' });
+  res.send(f.data);
+}));
+app.delete('/api/clients/:id/files/:fid', ...staff, wrap(async (req, res) => {
+  if (!isUuid(req.params.id) || !isUuid(req.params.fid)) return res.status(400).json({ error: 'Id no válido' });
+  await q('delete from client_files where id = $1 and client_id = $2', [req.params.fid, req.params.id]);
+  res.json({ ok: true });
+}));
+
 app.patch('/api/notes/:id', ...staff, wrap(async (req, res) => {
   if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Id no válido' });
   const cur = (await q('select * from client_notes where id = $1', [req.params.id])).rows[0];
@@ -627,7 +667,7 @@ app.get('/api/dashboard', ...staff, wrap(async (_req, res) => {
 
 // ───────── Credenciales (equipo) ─────────
 const credOut = (r) => ({
-  id: r.id, service: r.service, company: r.company, username: r.username, email: r.email, url: r.url,
+  login_with: r.login_with || [], id: r.id, service: r.service, company: r.company, username: r.username, email: r.email, url: r.url,
   notes: r.notes, status: r.status, has_password: !!r.password_enc, updated_at: r.updated_at, updated_by: r.updated_by,
 });
 const clip = (v, n = 500) => (v == null || v === '' ? null : String(v).slice(0, n));
@@ -643,10 +683,10 @@ app.post('/api/clients/:id/credentials', ...staff, requirePasswordRecent, wrap(a
   const b = req.body;
   if (!clip(b.service, 120)) return res.status(400).json({ error: 'Indica el servicio' });
   const r = await q(
-    `insert into credentials (client_id, service, company, username, email, password_enc, url, notes, status, updated_by)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
+    `insert into credentials (client_id, service, company, username, email, password_enc, url, notes, status, updated_by, login_with)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
     [req.params.id, clip(b.service, 120), clip(b.company), clip(b.username), clip(b.email), b.password ? encrypt(b.password) : null,
-      clip(b.url, 500), clip(b.notes, 2000), b.password ? 'recibida' : 'pendiente', req.user.email]);
+      clip(b.url, 500), clip(b.notes, 2000), b.password || ssoList(b.login_with).length ? 'recibida' : 'pendiente', req.user.email, ssoList(b.login_with)]);
   await log(r.rows[0].id, req.params.id, req.user.id, req.user.email, 'crear');
   res.json({ credential: credOut(r.rows[0]) });
 }));
@@ -661,14 +701,15 @@ app.put('/api/credentials/:id', ...staff, requirePasswordRecent, wrap(async (req
   let pwd = cur.password_enc;
   let changedPwd = false;
   if (has('password') && b.password !== '') { pwd = encrypt(b.password); changedPwd = true; }
+  const sso = has('login_with') ? ssoList(b.login_with) : cur.login_with || [];
   const r = await q(
     `update credentials set service=$1, company=$2, username=$3, email=$4, password_enc=$5, url=$6, notes=$7, status=$8,
-     updated_at=now(), updated_by=$9 where id=$10 returning *`,
+     updated_at=now(), updated_by=$9, login_with=$11 where id=$10 returning *`,
     [clip(has('service') ? b.service : cur.service, 120) || cur.service,
       has('company') ? clip(b.company) : cur.company, has('username') ? clip(b.username) : cur.username,
       has('email') ? clip(b.email) : cur.email, pwd, has('url') ? clip(b.url) : cur.url,
       has('notes') ? clip(b.notes, 2000) : cur.notes,
-      changedPwd && status === 'pendiente' ? 'recibida' : status, req.user.email, cur.id]);
+      (changedPwd || sso.length) && status === 'pendiente' ? 'recibida' : status, req.user.email, cur.id, sso]);
   await log(cur.id, cur.client_id, req.user.id, req.user.email, changedPwd ? 'cambiar contraseña' : 'editar');
   res.json({ credential: credOut(r.rows[0]) });
 }));
@@ -715,7 +756,7 @@ async function byToken(req, res, next) {
 // que viven dentro de una sección del cliente. Se filtra aquí, en el servidor, no solo en la pantalla.
 const fieldsOfSec = (s) => s.groups.flatMap((g) => g.fields);
 // Un campo con `shared: true` lo rellena la agencia pero el cliente lo ve en solo lectura (quién es quién, acciones de AVANIA).
-const agencyField = (f) => f.owner === 'team' && !f.shared;
+const agencyField = (f) => f.owner === 'team' && !f.shared && !f.clientEdit;
 const TEAM_ONLY = new Set(FORM.filter((x) => (x.owner === 'team' && !x.shared) || fieldsOfSec(x).every(agencyField)).map((x) => x.key));
 const TEAM_KEYS = Object.fromEntries(FORM.map((x) => [x.key, new Set(fieldsOfSec(x).filter(agencyField).map((f) => f.k))]));
 // Al cliente se le enseña su avance y el de las áreas, pero no el de la parte interna de la agencia.
@@ -728,7 +769,7 @@ const byClient = wrap((req, res, next) => (req.params.token ? byToken(req, res, 
 const noMember = (req, res, next) => (req.portal && req.cu.role !== 'responsable' ? res.status(403).json({ error: 'Los accesos solo los gestiona el responsable' }) : next());
 app.get(['/api/f/:token', '/api/p/form'], byClient, wrap(async (req, res) => {
   const all = await sectionsOf(req.client.id);
-  const sections = Object.fromEntries(Object.entries(all).filter(([k]) => !TEAM_ONLY.has(k)).map(([k, v]) => [k, forClient(k, v)]));
+  const sections = Object.fromEntries(Object.entries(all).filter(([k]) => !TEAM_ONLY.has(k) && viewOn(req.client, k)).map(([k, v]) => [k, forClient(k, v)]));
   const cr = await q('select * from credentials where client_id = $1 order by service, updated_at', [req.client.id]);
   const crn = {};
   for (const r of cr.rows) crn[r.status] = (crn[r.status] || 0) + 1;
@@ -738,13 +779,14 @@ app.get(['/api/f/:token', '/api/p/form'], byClient, wrap(async (req, res) => {
     tasks: forClientTasks(tasksOf(all, crn, { allowed: tpl.allowed, dental: tpl.dental })), timeline: timelineOf(all), fases: fasesOf(all),
     allowed: tpl.allowed ? [...tpl.allowed] : null, dental: tpl.dental,
     gates: gates(sections, crn, tpl.allowed), contact: process.env.MAIL_REPLY_TO || null,
-    role: req.portal ? req.cu.role : null,
-    credentials: req.portal && req.cu.role !== 'responsable' ? [] : cr.rows.map((r) => ({ ...credOut(r), updated_by: undefined })),
+    role: req.portal ? req.cu.role : null, views: viewMap(req.client),
+    credentials: !viewOn(req.client, 'credenciales') || (req.portal && req.cu.role !== 'responsable') ? [] : cr.rows.map((r) => ({ ...credOut(r), updated_by: undefined })),
   });
 }));
 
 app.put(['/api/f/:token/sections/:key', '/api/p/form/sections/:key'], byClient, wrap(async (req, res) => {
   if (TEAM_ONLY.has(req.params.key)) return res.status(404).json({ error: 'Sección desconocida' });
+  if (!viewOn(req.client, req.params.key)) return denyView(res);
   const data = sanitizeSection(req.params.key, req.body || {}, { team: false });
   if (!data) return res.status(404).json({ error: 'Sección desconocida' });
   const merged = await saveSection(req.client, req.params.key, data, 'cliente');
@@ -755,33 +797,36 @@ app.put(['/api/f/:token/sections/:key', '/api/p/form/sections/:key'], byClient, 
 
 // El cliente puede escribir contraseñas, pero nunca leerlas de vuelta.
 app.post(['/api/f/:token/credentials', '/api/p/form/credentials'], byClient, noMember, wrap(async (req, res) => {
+  if (!viewOn(req.client, 'credenciales')) return denyView(res);
   const b = req.body;
   if (!clip(b.service, 120)) return res.status(400).json({ error: 'Indica el servicio' });
   const n = (await q('select count(*)::int n from credentials where client_id = $1', [req.client.id])).rows[0].n;
   if (n >= 60) return res.status(400).json({ error: 'Demasiadas filas' });
   const r = await q(
-    `insert into credentials (client_id, service, company, username, email, password_enc, url, notes, status, updated_by)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'cliente') returning *`,
+    `insert into credentials (client_id, service, company, username, email, password_enc, url, notes, status, updated_by, login_with)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'cliente',$10) returning *`,
     [req.client.id, clip(b.service, 120), clip(b.company), clip(b.username), clip(b.email), b.password ? encrypt(b.password) : null,
-      clip(b.url, 500), clip(b.notes, 2000), b.password ? 'recibida' : 'pendiente']);
+      clip(b.url, 500), clip(b.notes, 2000), b.password || ssoList(b.login_with).length ? 'recibida' : 'pendiente', ssoList(b.login_with)]);
   await log(r.rows[0].id, req.client.id, null, 'cliente', 'crear');
   res.json({ credential: { ...credOut(r.rows[0]), updated_by: undefined } });
 }));
 
 app.put(['/api/f/:token/credentials/:id', '/api/p/form/credentials/:id'], byClient, noMember, wrap(async (req, res) => {
+  if (!viewOn(req.client, 'credenciales')) return denyView(res);
   if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Id no válido' });
   const cur = (await q('select * from credentials where id = $1 and client_id = $2', [req.params.id, req.client.id])).rows[0];
   if (!cur) return res.status(404).json({ error: 'No existe' });
   const b = req.body;
   const has = (k) => Object.prototype.hasOwnProperty.call(b, k);
   const newPwd = has('password') && b.password !== '';
-  const status = newPwd && cur.status !== 'verificada' ? 'recibida' : cur.status;
+  const sso = has('login_with') ? ssoList(b.login_with) : cur.login_with || [];
+  const status = (newPwd || sso.length) && cur.status === 'pendiente' ? 'recibida' : cur.status;
   const r = await q(
     `update credentials set company=$1, username=$2, email=$3, password_enc=$4, url=$5, notes=$6, status=$7,
-     updated_at=now(), updated_by='cliente' where id=$8 returning *`,
+     updated_at=now(), updated_by='cliente', login_with=$9 where id=$8 returning *`,
     [has('company') ? clip(b.company) : cur.company, has('username') ? clip(b.username) : cur.username,
       has('email') ? clip(b.email) : cur.email, newPwd ? encrypt(b.password) : cur.password_enc,
-      has('url') ? clip(b.url) : cur.url, has('notes') ? clip(b.notes, 2000) : cur.notes, newPwd ? 'recibida' : status, cur.id]);
+      has('url') ? clip(b.url) : cur.url, has('notes') ? clip(b.notes, 2000) : cur.notes, newPwd && cur.status !== 'verificada' ? 'recibida' : status, cur.id, sso]);
   await log(cur.id, cur.client_id, null, 'cliente', newPwd ? 'cambiar contraseña' : 'editar');
   res.json({ credential: { ...credOut(r.rows[0]), updated_by: undefined } });
 }));
@@ -796,10 +841,27 @@ app.put('/api/clients/:id/proceso', ...staff, wrap(async (req, res) => {
   res.json({ fases: fasesOf(all), timeline: timelineOf(all, { includeEmpty: true }) });
 }));
 
+// «Ver cliente»: solo un superadministrador decide qué ve el cliente en su espacio.
+app.put('/api/clients/:id/client-view', ...staff, requireRole('super_admin'), wrap(async (req, res) => {
+  const c = await clientOf(req, res); if (!c) return;
+  const { key, on } = req.body || {};
+  if (!VIEW_KEYS.includes(key) || typeof on !== 'boolean') return res.status(400).json({ error: 'Dato no válido' });
+  const r = await q("update clients set client_view = client_view || jsonb_build_object($1::text, $2::boolean), updated_at = now() where id = $3 returning client_view", [key, on, c.id]);
+  res.json({ views: viewMap({ client_view: r.rows[0].client_view }) });
+}));
+
 // Archivos de la carpeta de Drive del cliente (leídos de Google Drive; solo lectura).
 app.get('/api/clients/:id/drive', ...staff, wrap(async (req, res) => {
   const c = await clientOf(req, res); if (!c) return;
   res.json(await driveListing((await sectionsOf(c.id)).proyecto?.enlace_drive, { refresh: req.query.refresh === '1' }));
+}));
+
+// Nueva carpeta dentro de la carpeta de Drive del cliente (lo único que Space crea en Drive).
+app.post('/api/clients/:id/drive/folders', ...staff, requireRole('super_admin', 'admin'), wrap(async (req, res) => {
+  const c = await clientOf(req, res); if (!c) return;
+  const link = (await sectionsOf(c.id)).proyecto?.enlace_drive;
+  const b = req.body || {};
+  res.json(await createFolder(link, String(b.parent || ''), b.name));
 }));
 
 // Cronograma al día (se pide de nuevo tras cambiar una fecha desde el propio cronograma).
@@ -858,6 +920,14 @@ app.post('/api/clients/:id/team-done', ...staff, wrap(async (req, res) => {
   if (done) { try { sent = await maybeSendReport(c.id); } catch (e) { error = e.message; } }
   const fresh = (await q('select * from clients where id = $1', [c.id])).rows[0];
   res.json({ onboarding: onboardingState(fresh, await sectionsOf(c.id)), sent, error });
+}));
+// Mapa y estudio sociodemográfico de la zona (dirección y ciudad de Datos; radio y localidades de Área de influencia).
+app.get('/api/clients/:id/zona', ...staff, wrap(async (req, res) => {
+  const c = await clientOf(req, res); if (!c) return;
+  const all = await sectionsOf(c.id), cl = all.clinica || {}, zn = all.zona || {};
+  if (!String(zn.localidades || '').trim() && !String(cl.direccion || cl.ciudad || '').trim()) return res.json({ empty: true });
+  try { res.json(await zonaStudy({ direccion: cl.direccion, ciudad: cl.ciudad, radio: zn.radio, localidades: zn.localidades })); }
+  catch (e) { res.status(502).json({ error: `No se pudo preparar el estudio de la zona: ${e.message}` }); }
 }));
 // Vista previa del informe (no envía nada) y envío manual.
 app.get('/api/clients/:id/report', ...staff, wrap(async (req, res) => {

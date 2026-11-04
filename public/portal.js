@@ -1,10 +1,10 @@
 // Portal del cliente: su espacio con cuenta propia (responsable o miembro). Inicio, alta, datos, documentos y equipo.
 import { el, api, toast, renderSection, openModal, askConfirm, toUrl, fmtDate } from './fields.js';
-import { partOf, kpisNode } from './extra.js';
+import { partOf, kpisNode, zonaCard } from './extra.js';
 import { homeNodes, docsNodes, phasesNode, timelineNode, taskColumns } from './clientview.js';
 
 const app = document.getElementById('app');
-document.body.classList.add('cform');
+document.body.classList.add('cform', 'portal');
 let me = null, formDef = null;
 const main = el('main', { id: 'main', tabindex: '-1' });
 const brand = () => el('span', { class: 'brandline' }, el('img', { class: 'logo-light', src: '/brand/avania-light.png', alt: 'avania', height: 24 }), el('img', { class: 'logo-dark', src: '/brand/avania-dark.png', alt: '', height: 24 }), el('b', {}, 'ESPACIO'));
@@ -29,10 +29,12 @@ async function boot() {
   route();
 }
 
-const PAGES = [['inicio', 'Inicio'], ['cronograma', 'Cronograma'], ['resultados', 'Resultados'], ['datos', 'Mis datos'], ['documentos', 'Documentos']];
+// Las páginas que ve el cliente las decide el superadministrador («Ver cliente» en la ficha); el servidor lo vuelve a comprobar en cada petición.
+const pagesOf = () => { const v = me.views || {}; return [['inicio', 'Inicio'], ...(v.plan ? [['cronograma', 'Cronograma']] : []), ...(v.resultados ? [['resultados', 'Resultados']] : []), ...(v.personas ? [['datos', 'Mis datos']] : []),
+  ...(v.zona ? [['zona', 'Área de influencia']] : []), ...(me.info?.length ? [['info', 'Información']] : []), ...(v.documentos ? [['documentos', 'Documentos']] : [])]; };
 function shell() {
   const isResp = me.user.role === 'responsable';
-  const nav = el('nav', { 'aria-label': 'Principal' }, [...PAGES, ['alta', 'Mi alta'], ...(isResp ? [['equipo', 'Mi equipo']] : [])].map(([k, t]) =>
+  const nav = el('nav', { 'aria-label': 'Principal' }, [...pagesOf(), ['alta', 'Mi alta'], ...(isResp ? [['equipo', 'Mi equipo']] : [])].map(([k, t]) =>
     el('a', { href: k === 'alta' ? '/portal/alta' : `#/${k === 'inicio' ? '' : k}`, 'data-k': k }, t)));
   app.replaceChildren(
     el('a', { class: 'skip', href: '#main', onclick: (e) => { e.preventDefault(); main.focus(); } }, 'Saltar al contenido'),
@@ -47,7 +49,7 @@ window.addEventListener('hashchange', () => me && route());
 
 function route() {
   const k = (location.hash.replace(/^#\/?/, '') || 'inicio');
-  const draw = { inicio: homeView, cronograma: planView, resultados: resultsView, datos: datosView, documentos: docsView, equipo: teamView }[k] || homeView;
+  const draw = { inicio: homeView, cronograma: planView, resultados: resultsView, datos: datosView, zona: zonaView, info: infoView, documentos: docsView, equipo: teamView }[k] || homeView;
   document.querySelectorAll('header nav a').forEach((a) => a.classList.toggle('on', a.dataset.k === (draw === homeView ? 'inicio' : k)));
   Promise.resolve(draw()).then(() => { window.scrollTo(0, 0); const h = main.querySelector('h1'); if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); } })
     .catch((e) => (e.status === 401 ? loginView('Tu sesión ha caducado. Entra de nuevo.') : main.replaceChildren(el('div', { class: 'banner', role: 'alert' }, e.message))));
@@ -84,6 +86,21 @@ async function resultsView() {
   const r = await api('GET', '/api/p/kpis');
   main.replaceChildren(el('h1', {}, 'Resultados'), el('p', { class: 'muted' }, 'Cómo va vuestra campaña en los últimos 30 días: cuántas personas nos escriben, cuántas llegan a cita y cuántas se convierten en clientes.'),
     r.connected ? kpisNode(r.kpis) : el('div', { class: 'card' }, el('p', { class: 'muted', style: 'margin:0' }, 'Todavía no hay resultados que enseñar. Aparecerán aquí en cuanto la campaña esté en marcha.')));
+}
+
+// Área de influencia: el mismo mapa y estudio de la zona que ve el equipo.
+async function zonaView() {
+  main.replaceChildren(el('h1', {}, 'Área de influencia'), el('p', { class: 'muted' }, 'La zona en la que trabajamos para vuestra campaña, con sus localidades y los datos de población y renta.'));
+  zonaCard(main, null, { url: '/api/p/zona', title: 'Mapa y estudio de la zona' });
+}
+
+// Información que AVANIA ha decidido enseñaros (solo lectura).
+async function infoView() {
+  const { sections } = await api('GET', '/api/p/shared');
+  const noSave = async () => ({});
+  main.replaceChildren(el('h1', {}, 'Información'), el('p', { class: 'muted' }, 'Lo que AVANIA ha preparado para vosotros. Es de solo lectura.'),
+    ...sections.map(({ def, data }) => renderSection(def, data, { team: false, save: noSave })));
+  main.querySelectorAll('button, input, select, textarea').forEach((x) => { x.disabled = true; });
 }
 
 async function docsView() {

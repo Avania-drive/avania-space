@@ -1,7 +1,7 @@
 import { DATE_ATTRS, el, api, toast, renderSection, renderCredentials, helpBlock, helpButton, toUrl, appIcon, appName, openModal, askText, askConfirm, notice, fmtDate } from './fields.js';
 import { embedUrl } from './preview.js';
-import { homeNodes, docsNodes, areasNodes, taskColumns, timelineNode, phasesNode, bar } from './clientview.js';
-import { kpisNode, scopeForm, partOf, panelView, configView, notesTab, linksCard, docsTab, lastChange, avatar, logoButton, clientUsersTab, vaultView, resultsTab, pipelineTools, agencyOnly } from './extra.js';
+import { homeNodes, docsNodes, areasNodes, taskColumns, timelineNode, phasesNode, bar, driveFilesNode } from './clientview.js';
+import { kpisNode, scopeForm, partOf, panelView, configView, notesTab, linksCard, docsTab, lastChange, avatar, logoButton, clientUsersTab, vaultView, resultsTab, pipelineTools, agencyOnly, zonaCard } from './extra.js';
 
 const app = document.getElementById('app');
 let me = null, formDef = null, ayuda = {};
@@ -124,6 +124,7 @@ const ICONS = {
   fechas: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   accesos: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
   meta: '<path d="M3 11v3l12 5V6zM15 8c3 .5 5 2 5 4s-2 3.500-5 4M7 16l1.500 4h3L10 17"/>',
+  zona: '<path d="M12 21s7-6.500 7-12a7 7 0 0 0-14 0c0 5.500 7 12 7 12z"/><circle cx="12" cy="9" r="2.500"/>',
   agenda: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 16l2 2 4-4"/>',
   whatsapp: '<path d="M21 11.500a8.400 8.400 0 0 1-12.300 7.400L3 20.500l1.700-5.500A8.400 8.400 0 1 1 21 11.500z"/>',
   formacion: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2.500 9 2.500 12 0v-5"/>',
@@ -318,8 +319,9 @@ async function clientsView() {
     el('span', { class: 'when', title: 'Última actividad en la ficha' }, ago(c.last_activity)),
     el('span', { class: 'who' }, c.account_manager || '—'),
     el('span', { class: 'cat' }, catPill(c.category, c.category_color)));
+  const folds = { 'En campaña': true };   // los grupos plegables: «En campaña» sale desplegado y se recuerda lo que se abra o cierre
   const group = (title, list, fold) => !list.length ? '' : fold
-    ? el('details', { class: 'cgroup' }, el('summary', {}, `${title} (${list.length})`), el('div', { class: 'clist' }, list.map(crow)))
+    ? el('details', { class: 'cgroup', open: folds[title] === true, ontoggle: (e) => { folds[title] = e.target.open; } }, el('summary', {}, `${title} (${list.length})`), el('div', { class: 'clist' }, list.map(crow)))
     : el('section', { class: 'cgroup' }, el('h2', {}, `${title} (${list.length})`), el('div', { class: 'clist' }, list.map(crow)));
   const ficha = (c) => el('a', { class: 'ficha', href: `#/c/${c.id}` },
     el('div', { class: 'top' }, avatar(c),
@@ -396,83 +398,78 @@ function newClient() {
   const d = openModal(card, { label: 'Nuevo cliente' });
 }
 
-// Alta con el ID del cliente en Avania Funnels (su contacto en el CRM): no hay que preguntarle nada.
+// Alta con el ID de la subcuenta del cliente en Avania Funnels (la que ya se ha creado para él).
 function newFromFunnels() {
   const err = el('div', { class: 'err', role: 'alert' });
-  const idIn = el('input', { placeholder: 'ID del contacto', autocomplete: 'off', spellcheck: false, required: true });
+  const nameIn = el('input', { id: 'nf-nombre', autocomplete: 'off', required: true, 'data-autofocus': '' });
+  const cityIn = el('input', { id: 'nf-ciudad', autocomplete: 'off' });
+  const idIn = el('input', { id: 'nf-id', placeholder: 'ID de la subcuenta', autocomplete: 'off', spellcheck: false, required: true });
   const catSel = el('select', { required: true, 'aria-label': 'Categoría' });
-  const where = el('div', { class: 'muted pwhint' });
   let cats = [];
-  const note = () => { where.textContent = catSel.value && catSel.value !== '__nueva' ? (/dental|cl[ií]nica/i.test(catSel.value) ? 'Se busca en la subcuenta AVANIA Clinical Dental.' : 'Se busca en la subcuenta AVANIA | Agencia de Marketing Digital.') : 'Elige la categoría para saber en qué subcuenta se busca.'; };
-  const fill = (sel) => { catSel.replaceChildren(el('option', { value: '' }, '— Elige categoría —'), ...cats.map((c) => el('option', { value: c.name, selected: c.name === sel }, c.name)), el('option', { value: '__nueva' }, '＋ Nueva categoría…')); note(); };
+  const fill = (sel) => catSel.replaceChildren(el('option', { value: '' }, '— Elige categoría —'), ...cats.map((c) => el('option', { value: c.name, selected: c.name === sel }, c.name)), el('option', { value: '__nueva' }, '＋ Nueva categoría…'));
   catSel.addEventListener('change', async () => {
     if (catSel.value === '__nueva') {
       const name = await askText({ title: 'Nueva categoría', label: 'Nombre de la categoría', ok: 'Crear categoría' });
       if (name) { try { const { category } = await api('POST', '/api/categories', { name, color: '#6d28d9' }); cats = [...cats.filter((c) => c.name !== category.name), category]; fill(category.name); return; } catch (e) { err.textContent = e.message; } }
       fill('');
-    } else note();
+    }
   });
   api('GET', '/api/categories').then((r) => { cats = r.categories; fill(''); }).catch(() => fill(''));
   const close = () => dlg.close();
   const go = async (e) => {
     e.preventDefault(); err.textContent = ''; btn.disabled = true;
     try {
-      const r = await api('POST', '/api/clients/from-funnels', { contactId: idIn.value, category: catSel.value });
-      close(); toast('Cliente creado con los datos de Funnels'); location.hash = `#/c/${r.client.id}`;
+      const r = await api('POST', '/api/clients/from-funnels', { locationId: idIn.value.trim(), name: nameIn.value.trim(), city: cityIn.value.trim(), category: catSel.value });
+      close(); toast('Cliente creado'); location.hash = `#/c/${r.client.id}`;
     } catch (er) { err.textContent = er.message; btn.disabled = false; }
   };
   const btn = el('button', { class: 'btn', type: 'submit' }, 'Crear cliente');
   const card = el('form', { class: 'card', onsubmit: go },
     el('h2', {}, 'Nuevo cliente desde Avania Funnels'),
-    el('p', { class: 'muted' }, 'Elige la categoría y pega el ID del cliente (su contacto en Avania Funnels). La categoría decide en qué subcuenta se busca: las empresas dentales, en AVANIA Clinical Dental; industriales, seguros y el resto, en AVANIA | Agencia de Marketing Digital.'),
-    el('label', {}, 'Categoría', catSel), where,
-    el('label', { style: 'margin-top:10px' }, 'ID del contacto', idIn), err,
+    el('p', { class: 'muted' }, 'Escribe el nombre de la empresa y pega el ID de su subcuenta en Avania Funnels (la que ya has creado para este cliente). Lo encuentras en la subcuenta: Ajustes › Información del negocio › ID de la ubicación.'),
+    el('label', { for: 'nf-nombre' }, 'Nombre de la empresa'), nameIn,
+    el('label', { for: 'nf-id', style: 'margin-top:10px' }, 'ID de la subcuenta'), idIn,
+    el('label', { for: 'nf-ciudad', style: 'margin-top:10px' }, 'Ciudad (opcional)'), cityIn,
+    el('label', { style: 'margin-top:10px' }, 'Categoría', catSel), err,
     el('div', { class: 'row', style: 'margin-top:12px' }, btn, el('button', { class: 'btn ghost', type: 'button', onclick: close }, 'Cancelar')));
   const dlg = openModal(card, { label: 'Nuevo cliente desde Avania Funnels' });
-  idIn.focus();
 }
 
 // Panel lateral con la vista previa de un documento de Google Drive (DOCX, PDF, Docs…).
+// Vista previa de un documento en una ventana emergente (con la X para cerrarla). `el` queda vacío: las pantallas ya no reservan un panel al lado.
 function previewPane() {
-  const title = el('strong', {}, 'Vista previa'), kind = el('div', { class: 'muted' }), open = el('a', { class: 'btn ghost small', target: '_blank', rel: 'noopener' }, 'Abrir en Drive');
-  const body = el('div', { class: 'pvbody' }, el('p', { class: 'muted' }, 'Pulsa «Ver» en un enlace para previsualizarlo aquí.'));
-  const pane = el('aside', { class: 'pv card' }, el('div', { class: 'row' }, title, el('span', { class: 'grow' }), open), kind, body);
-  open.hidden = true;
-  // La rueda mueve la página; el documento solo se desplaza dentro del visor tras hacer clic en él.
-  body.addEventListener('click', () => body.classList.add('live'));
-  body.addEventListener('mouseleave', () => body.classList.remove('live'));
   const show = (r) => {
-    title.textContent = r.nombre || 'Documento';
-    const e = embedUrl(r.url);
-    open.hidden = !r.url; if (r.url) open.href = r.url;
-    kind.textContent = e ? e.kind : '';
-    body.replaceChildren(e
-      ? el('iframe', { src: e.src, loading: 'lazy', referrerpolicy: 'no-referrer', allow: '', title: r.nombre || 'Vista previa' })
-      : el('p', { class: 'muted' }, r.url ? 'Este enlace no es de Google Drive o Docs, así que no se puede previsualizar. Ábrelo con el botón.' : 'Pega un enlace de Google Drive para ver el documento.'));
-    if (e) body.append(el('p', { class: 'muted small' }, 'Pulsa dentro del documento para desplazarlo en el visor. Si ves una pantalla de Google pidiendo acceso, inicia sesión con la cuenta que tiene permiso sobre el documento.'));
+    const e = r.embed || embedUrl(r.url);
+    const open = el('a', { class: 'btn ghost small', target: '_blank', rel: 'noopener', ...(r.url ? { href: r.url } : { hidden: '' }) }, r.embed || r.local ? 'Descargar' : 'Abrir en Drive');
+    const close = el('button', { class: 'pvx', type: 'button', 'aria-label': 'Cerrar la vista previa', title: 'Cerrar', onclick: () => d.close(), 'data-autofocus': '' }, '×');
+    const body = el('div', { class: 'pvmbody' }, e
+      ? [el('iframe', { src: e.src, referrerpolicy: 'no-referrer', allow: '', title: r.nombre || 'Vista previa' }), el('p', { class: 'muted small' }, 'Si ves una pantalla de Google pidiendo acceso, inicia sesión con la cuenta que tiene permiso sobre el documento.')]
+      : el('p', { class: 'muted' }, r.local ? 'Este tipo de archivo no se puede previsualizar en Space. Descárgalo para abrirlo.' : r.url ? 'Este enlace no es de Google Drive o Docs, así que no se puede previsualizar. Ábrelo con el botón.' : 'Pega un enlace de Google Drive para ver el documento.'));
+    const card = el('div', { class: 'card pvmodal' }, el('div', { class: 'pvmhead' }, el('strong', { class: 'pvt' }, r.nombre || 'Documento'), e ? el('span', { class: 'muted pvk' }, e.kind) : '', el('span', { class: 'grow' }), open, close), body);
+    const d = openModal(card, { label: `Vista previa: ${r.nombre || 'documento'}`, cls: 'pvwrap' });
   };
-  return { el: pane, show };
+  return { el: document.createComment('vista previa'), show };
 }
 
 // ───────── Ficha del cliente ─────────
 async function clientView(id, tab) {
   if (tab === 'horarios') tab = 'agenda';   // los horarios y las fechas señaladas viven solo en Empresa › Horarios
-  const { client, statuses, sections, meta, progress, gates, allowed, dental, tasks, timeline, fases, onboarding } = await api('GET', `/api/clients/${id}`);
+  const { client, views = {}, statuses, sections, meta, progress, gates, allowed, dental, tasks, timeline, fases, onboarding } = await api('GET', `/api/clients/${id}`);
   const fd = scopeForm(formDef, allowed, dental);
   // Vista de cliente: solo administradores. Enseña cada página como la ve el cliente, en solo lectura.
   const canPreview = me.role === 'super_admin' || me.role === 'admin';
   const pvq = new URLSearchParams(location.hash.split('?')[1] || '');
-  if (canPreview && pvq.get('vista') === 'cliente') return clientPreview({ id, tab, client, sections, fd, dental, role: pvq.get('rol') === 'miembro' ? 'miembro' : 'responsable' });
+  if (canPreview && pvq.get('vista') === 'cliente') return clientPreview({ id, tab, client, views, sections, fd, dental, role: pvq.get('rol') === 'miembro' ? 'miembro' : 'responsable' });
   const link = `${location.origin}/f/${client.token}`;
-  const pages = [{ key: 'plan', title: 'Cronograma y próximas acciones', short: 'Cronograma' }, { key: 'resultados', title: 'Resultados' }, { key: 'personas', title: 'Personas' }, { key: 'equipo', title: 'Equipo del cliente', short: 'Equipo cliente' }, { key: 'notas', title: 'Notas' }, { key: 'documentos', title: 'Documentos' }];
+  const pages = [{ key: 'plan', title: 'Cronograma y próximas acciones', short: 'Cronograma' }, { key: 'resultados', title: 'Resultados' }, { key: 'personas', title: 'Personas y equipo del cliente', short: 'Personas' }, { key: 'documentos', title: 'Documentos y notas', short: 'Documentos' }];
   const tabs = [{ key: 'resumen', title: 'Resumen' }, ...pages, ...fd.form.map((s) => ({ key: s.key, title: `${s.num} ${s.title}`, short: s.short, sec: s })), { key: 'credenciales', title: 'Credenciales', short: 'Bóveda' }, { key: 'enlaces', title: 'Enlace del cliente', short: 'Enlace cliente' }, ...(me.can_see_passwords ? [{ key: 'registro', title: 'Registro de accesos', short: 'Registro' }] : [])];
-  const t = tabs.find((x) => x.key === tab) || tabs[0];
+  const t = tabs.find((x) => x.key === ({ equipo: 'personas', notas: 'documentos' }[tab] || tab)) || tabs[0];   // los enlaces antiguos a Equipo del cliente y Notas caen en su nueva pestaña
   const loc = String((sections.proyecto || {}).funnels_location || '').trim();
   const funnelsUrl = /^[A-Za-z0-9]{8,40}$/.test(loc) ? `https://app.avania.marketing/v2/location/${loc}/dashboard` : null;
   // Quién ve cada cosa: navy = solo la agencia; gris = lo ve (y rellena) el cliente.
   const access = ['accesos', 'meta', 'credenciales', 'enlaces', 'registro'].map((k) => tabs.find((x) => x.key === k)).filter(Boolean);   // la zona restringida y la gestión del enlace
-  const PAGE_SCOPE = { plan: 'client', resumen: 'agency', resultados: 'client', personas: 'client', horarios: 'client', equipo: 'agency', notas: 'agency', documentos: 'client', credenciales: 'client', enlaces: 'agency', registro: 'agency' };
-  const scopeOf = (x) => (x.sec ? (agencyOnly(x.sec) ? 'agency' : 'client') : PAGE_SCOPE[x.key]);
+  const PAGE_SCOPE = { plan: 'client', resumen: 'agency', resultados: 'client', personas: 'client', horarios: 'client', equipo: 'agency', notas: 'agency', documentos: 'agency', credenciales: 'client', enlaces: 'agency', registro: 'agency' };
+  const scopeOf = (x) => (x.key in views ? (views[x.key] ? 'client' : 'agency') : x.sec ? (agencyOnly(x.sec) ? 'agency' : 'client') : PAGE_SCOPE[x.key]);
   const uniform = (items) => (items.every((i) => i.scope === items[0].scope) ? items[0].scope : null);
   const navItem = (x) => { const p = progress.sections[x.key]; return { scope: scopeOf(x), href: `#/c/${id}/${x.key}`, key: x.key, label: x.short || x.title, on: x.key === t.key, small: p ? `${p.done}/${p.total}` : (progress.sectionsTeam || {})[x.key] ? `${progress.sectionsTeam[x.key].done}/${progress.sectionsTeam[x.key].total}` : x.sec && agencyOnly(x.sec) ? 'agencia' : '' }; };
   const count = (keys) => { const r = keys.map((k) => progress.sections[k]).filter(Boolean); return r.length ? `${r.reduce((n, p) => n + p.done, 0)}/${r.reduce((n, p) => n + p.total, 0)}` : ''; };
@@ -484,7 +481,18 @@ async function clientView(id, tab) {
     groups: [...fd.blocks.map((b, i) => { const items = bloqueTecnico(b).map(navItem); const a = progress.areas.find((x) => x.key === b.key); return { key: b.key, title: b.short, badge: a ? areaBadge(a) : '', items, scope: uniform(items) }; }),
       (() => { const items = manage.map(navItem); return { key: 'gestion', title: 'Gestión', badge: '', items, scope: uniform(items) }; })()] });
   const main = el('div', {});
-  if (t.key !== 'resumen') main.append(el('h2', {}, t.title, el('span', { class: 'scope-chip', 'data-scope': scopeOf(t) }, scopeOf(t) === 'agency' ? 'Solo agencia' : 'Lo ve el cliente')));
+  // «Ver cliente»: el superadministrador decide si el cliente ve esta página; el resto del equipo solo ve el estado.
+  const viewChip = () => {
+    const on = scopeOf(t) === 'client';
+    if (me.role !== 'super_admin' || !(t.key in views)) return el('span', { class: 'scope-chip', 'data-scope': scopeOf(t) }, on ? 'Lo ve el cliente' : 'Solo agencia');
+    const cb = el('input', { type: 'checkbox', id: 'vercliente', checked: on, onchange: async (e) => {
+      const v = e.target.checked;
+      try { Object.assign(views, (await api('PUT', `/api/clients/${id}/client-view`, { key: t.key, on: v })).views); toast(v ? 'El cliente ya ve esta parte' : 'El cliente ya no ve esta parte'); route(); }
+      catch (er) { e.target.checked = !v; toast(er.message); }
+    } });
+    return el('label', { class: 'scope-chip viewtick', for: 'vercliente', 'data-scope': on ? 'client' : 'agency', title: 'Marca para que el cliente vea esta parte en su espacio; desmárcala para ocultarla' }, cb, 'Ver cliente');
+  };
+  if (t.key !== 'resumen') main.append(el('h2', {}, t.title, viewChip()));
   if (t.key === 'resumen') {
     const miss = gates.filter((g) => !g.done);
     main.append(el('section', { class: 'launch' },
@@ -515,7 +523,9 @@ async function clientView(id, tab) {
     const [skey, keys] = ['clinica', ['responsables']];
     const data = sections[skey] || (sections[skey] = {});
     main.append(el('p', { class: 'muted' }, t.key === 'personas' ? 'Las personas del cliente, el papel de cada una y si tienen acceso al portal. Es la misma información del alta.' : [lastChange(meta, 'agenda') || 'Sin modificaciones todavía.', ' Es la misma información del alta.']),
-      renderSection(partOf(formDef, skey, keys, t.title), data, { team: true, clientName: client.name, save: (p) => api('PUT', `/api/clients/${id}/sections/${skey}`, p) }));
+      renderSection(partOf(formDef, skey, keys, 'Personas'), data, { team: true, clientName: client.name, save: (p) => api('PUT', `/api/clients/${id}/sections/${skey}`, p) }));
+    main.append(el('h2', { style: 'margin:22px 0 4px' }, 'Equipo del cliente'));
+    await clientUsersTab(main, id);
   } else if (t.key === 'plan') {
     main.append(el('p', { class: 'muted' }, 'Todo lo que hacemos por el cliente, desde los documentos de investigación hasta el lanzamiento. El cliente lo ve y sigue cada paso. Los cambios se guardan al momento.'),
       el('section', { class: 'card', style: 'margin:12px 0' }, phasesNode(fases, { edit: { save: (b) => api('PUT', `/api/clients/${id}/proceso`, b), error: (e) => toast(e.message) } })),
@@ -523,12 +533,13 @@ async function clientView(id, tab) {
       el('section', { class: 'cgroup' }, el('h2', {}, 'Fechas'), el('div', { class: 'card' }, liveTimeline(80))));
   } else if (t.key === 'resultados') {
     await resultsTab(main, { clientId: id, me, funnelsLocation: (sections.proyecto || {}).funnels_location });
-  } else if (t.key === 'equipo') {
-    await clientUsersTab(main, id);
-  } else if (t.key === 'notas') {
-    await notesTab(main, id);
   } else if (t.key === 'documentos') {
-    docsTab(main, { fd, sections, driveUrl: (sections.proyecto || {}).enlace_drive, clientId: id });
+    const pvd = previewPane(), col = el('div');
+    col.append(driveFilesNode((refresh) => api('GET', `/api/clients/${id}/drive${refresh ? '?refresh=1' : ''}`), { agency: true, onView: pvd.show,
+      newFolder: ['super_admin', 'admin'].includes(me.role) ? (parent, name) => api('POST', `/api/clients/${id}/drive/folders`, { parent, name }) : null }));
+    col.append(el('h2', { style: 'margin:22px 0 8px' }, 'Notas'));
+    await notesTab(col, id);
+    main.append(col);
   } else if (t.sec && !['accesos', 'meta'].includes(t.key)) {   // Web y Google y Meta se abren en la zona protegida
     const data = sections[t.key] || (sections[t.key] = {});
     const hasDocs = t.sec.groups.some((g) => g.fields.some((f) => f.type === 'docs'));
@@ -541,7 +552,7 @@ async function clientView(id, tab) {
       if (tools.dataset?.connected) secDef = { ...t.sec, groups: t.sec.groups.map((g) => ({ ...g, fields: g.fields.filter((f) => f.k !== 'pipeline_id') })) };
     }
     if (t.key === 'cronograma') main.append(el('section', { class: 'card', style: 'margin-bottom:14px' }, el('h2', { style: 'margin:0 0 4px;font-size:16px' }, 'Fechas del proyecto'),
-      el('p', { class: 'muted', style: 'margin:0 0 10px' }, 'Cambia cualquier fecha del cronograma aquí mismo: se guarda al momento. Se arma con la firma, el inicio, el rodaje, la formación, las fechas señaladas y las acciones.'), liveTimeline(80)));
+      el('p', { class: 'muted', style: 'margin:0 0 10px' }, 'Cambia cualquier fecha del cronograma aquí mismo: se guarda al momento. Se arma con la firma, el inicio, el rodaje, la formación y las acciones. Los horarios, festivos y fechas señaladas de la empresa no entran aquí: están en Empresa › Horarios.'), liveTimeline(80)));
     if (t.key === 'avania') main.append(avaniaExtras());
     const saveSec = async (p) => {
       const r = await api('PUT', `/api/clients/${id}/sections/${t.key}`, p);
@@ -553,12 +564,8 @@ async function clientView(id, tab) {
       return r;
     };
     main.append(renderSection(secDef, data, { team: true, clientName: client.name, save: saveSec, preview: pv && pv.show }));
-    if (pv) {
-      main.classList.add('split');
-      main.append(pv.el);
-      const first = Object.values(data).flat().find((r) => r && r.url);
-      if (first) pv.show(first);
-    }
+    if (t.key === 'zona') zonaCard(main, id);
+
   } else if (['accesos', 'meta', 'credenciales'].includes(t.key)) {
     // Zona restringida: Web y Google, Meta y las contraseñas. Se abre con la contraseña de la cuenta (10 minutos de uso).
     const nTab = (k) => { const p = progress.sections[k]; return p ? ` · ${p.done}/${p.total}` : ''; };
@@ -600,7 +607,7 @@ async function clientView(id, tab) {
     };
     api('GET', '/api/reauth').then((s) => (s.active ? open() : showLock())).catch(() => showLock());
   } else if (t.key === 'enlaces') {
-    const fl = `${location.origin}/c/{{contact.id}}`;
+    const fl = `${location.origin}/c/{{${client.funnels_contact_id && client.funnels_contact_id === (sections.proyecto || {}).funnels_location ? 'location' : 'contact'}.id}}`;
     const copy = (txt, msg) => navigator.clipboard.writeText(txt).then(() => toast(msg));
     const linkCard = (title, hint, url, btns) => el('div', { class: 'card', style: 'margin-bottom:14px' }, el('strong', {}, title), el('p', { class: 'muted', style: 'margin:2px 0 10px' }, hint),
       el('div', { class: 'row' }, el('code', { class: 'mono grow', style: 'overflow-wrap:anywhere' }, url), ...btns));
@@ -609,7 +616,7 @@ async function clientView(id, tab) {
       linkCard('Enlace para el cliente', 'El formulario que rellena el cliente, sin cuenta. Se lo mandas o lo pones en su menú.', link, [
         el('button', { class: 'btn small', onclick: () => copy(link, 'Enlace del cliente copiado') }, 'Copiar'),
         el('a', { class: 'btn ghost small', href: link, target: '_blank', rel: 'noopener' }, 'Abrir')]),
-      client.funnels_contact_id ? linkCard('Enlace para el submenú de Avania Funnels', 'Pégalo tal cual en el menú personalizado de Avania Funnels: cada contacto abre su propia ficha.', fl, [
+      client.funnels_contact_id ? linkCard('Enlace para el submenú de Avania Funnels', 'Pégalo tal cual en el menú personalizado de Avania Funnels: cada cliente abre su propia ficha.', fl, [
         el('button', { class: 'btn small', onclick: () => copy(fl, 'Enlace para el submenú de Avania Funnels copiado') }, 'Copiar')]) : '',
       funnelsUrl
         ? linkCard('Subcuenta de Avania Funnels', 'Acceso directo a la subcuenta de este cliente.', funnelsUrl, [
@@ -743,12 +750,14 @@ function lockCard(box, onOpen, text) {
 }
 
 // ───────── Vista de cliente (solo administradores): cada página tal como la ve el cliente, sin guardar nada ─────────
-async function clientPreview({ id, tab, client, sections, fd, dental, role }) {
+async function clientPreview({ id, tab, client, views = {}, sections, fd, dental, role }) {
   const resp = role === 'responsable';
   const sfx = `?vista=cliente${resp ? '' : '&rol=miembro'}`;
-  const pages = [{ key: 'resumen', title: 'Inicio' }, { key: 'plan', title: 'Cronograma' }, { key: 'resultados', title: 'Resultados' }, { key: 'personas', title: 'Mis datos · Personas y contactos' }, { key: 'documentos', title: 'Documentos' }, ...(resp ? [{ key: 'equipo', title: 'Mi equipo' }] : [])];
-  const secTabs = fd.form.filter((x) => !agencyOnly(x)).map((x) => ({ key: x.key, title: x.title, short: x.short, sec: x }));
-  const credTab = resp ? { key: 'credenciales', title: 'Credenciales' } : null;
+  const info = fd.form.filter((x) => agencyOnly(x) && views[x.key]);
+  const pages = [{ key: 'resumen', title: 'Inicio' }, ...(views.plan ? [{ key: 'plan', title: 'Cronograma' }] : []), ...(views.resultados ? [{ key: 'resultados', title: 'Resultados' }] : []), ...(views.personas ? [{ key: 'personas', title: 'Mis datos · Personas y contactos' }] : []),
+    ...(views.zona ? [{ key: 'zona', title: 'Área de influencia' }] : []), ...(info.length ? [{ key: 'info', title: 'Información' }] : []), ...(views.documentos ? [{ key: 'documentos', title: 'Documentos' }] : []), ...(resp ? [{ key: 'equipo', title: 'Mi equipo' }] : [])];
+  const secTabs = fd.form.filter((x) => !agencyOnly(x) && views[x.key] !== false).map((x) => ({ key: x.key, title: x.title, short: x.short, sec: x }));
+  const credTab = resp && views.credenciales !== false ? { key: 'credenciales', title: 'Credenciales' } : null;
   const all = [...pages, ...secTabs, ...(credTab ? [credTab] : [])];
   const t = all.find((x) => x.key === tab) || all[0];
   const item = (x) => ({ href: `#/c/${id}/${x.key}${sfx}`, key: x.key, label: x.short || x.title, on: x.key === t.key });
@@ -757,26 +766,33 @@ async function clientPreview({ id, tab, client, sections, fd, dental, role }) {
 
   const roleLink = (r, label) => el('a', { class: 'btn small' + (r === role ? '' : ' ghost'), 'aria-current': r === role ? 'true' : null, href: `#/c/${id}/${t.key}?vista=cliente${r === 'miembro' ? '&rol=miembro' : ''}` }, label);
   const bar = el('div', { class: 'pvbar', role: 'region', 'aria-label': 'Vista de cliente' },
-    el('span', { class: 'pvtag' }, icon('ojo'), 'Vista de cliente'), el('span', { class: 'grow pvtext' }, `Así lo ve ${client.name}. Solo lectura: no se guarda nada.`),
+    el('span', { class: 'pvtag' }, icon('ojo'), 'Vista de cliente'), el('span', { class: 'grow pvtext' }, `Así lo ve ${client.name}. Aquí puedes cambiar sus datos igual que hace el cliente: se guardan en su ficha.`),
     el('span', { class: 'row', style: 'gap:6px' }, el('span', { class: 'muted' }, 'Ver como'), roleLink('responsable', 'Responsable'), roleLink('miembro', 'Miembro')),
     el('a', { class: 'btn small', href: `#/c/${id}/${t.key}` }, 'Salir de la vista de cliente'));
 
   const main = el('div', { class: 'pvpage' });
   const page = el('div', { class: 'pvbody' });
   const noSave = async () => ({});
-  // Solo lectura: los campos y botones quedan desactivados y los enlaces internos no navegan; los que abren otra pestaña (Drive, herramientas) sí funcionan.
-  const freeze = () => {
-    page.querySelectorAll('button, input, select, textarea').forEach((x) => { x.disabled = true; });
-    page.querySelectorAll('a').forEach((a) => { if (a.target !== '_blank') { a.tabIndex = -1; a.setAttribute('aria-disabled', 'true'); } });
+  // Lectura y escritura, como en el portal: lo que se cambia aquí se guarda en la ficha del cliente. Solo los enlaces que llevan al portal del cliente quedan inactivos (aquí no hay sesión de cliente).
+  const saveFor = (skey) => async (p) => { const r = await api('PUT', `/api/clients/${id}/sections/${skey}`, p); sections[skey] = { ...(sections[skey] || {}), ...p }; return r; };
+  const freeze = (root = page) => {
+    root.querySelectorAll('a').forEach((a) => { if (a.target !== '_blank') { a.tabIndex = -1; a.setAttribute('aria-disabled', 'true'); } });
   };
   const put = (...nodes) => { page.replaceChildren(...nodes); main.replaceChildren(page); freeze(); };
-  const partial = (skey, keys, title) => put(el('h1', {}, title), renderSection(partOf(formDef, skey, keys, title, dental), sections[skey] || {}, { team: false, save: noSave }));
+  const partial = (skey, keys, title) => put(el('h1', {}, title), renderSection(partOf(formDef, skey, keys, title, dental), sections[skey] || (sections[skey] = {}), { team: false, save: saveFor(skey) }));
   const unlocked = async (fn) => { try { await fn(); } catch (e) { if (e.code === 'password_required') lockCard(main, () => unlocked(fn), 'Esta parte del cliente es de acceso restringido. Escribe de nuevo la contraseña de tu cuenta para ver cómo la ve.'); else throw e; } };
 
   if (t.key === 'resumen' || t.key === 'documentos' || t.key === 'plan') {
     const h = await api('GET', `/api/clients/${id}/preview/home?role=${role}`);
     put(...(t.key === 'resumen' ? homeNodes(h, { preview: true }) : t.key === 'plan' ? [el('h1', {}, 'Cronograma'), el('section', { class: 'card', style: 'margin:14px 0' }, phasesNode(h.fases, { viewer: 'cliente' })), el('section', { class: 'cgroup' }, el('h2', {}, 'Fechas'), el('div', { class: 'card' }, timelineNode(h.timeline || [])))] : docsNodes(h, { loadFiles: () => api('GET', `/api/clients/${id}/drive`).then((r) => (r.state === 'ok' || r.state === 'sin_carpeta' ? r : { state: 'no_disponible' })) })));
   } else if (t.key === 'personas') partial('clinica', ['responsables', 'telefonos'], 'Personas y contactos');
+  else if (t.key === 'zona') { const box = el('div'); zonaCard(box, id); put(el('h1', {}, 'Área de influencia'), el('p', { class: 'muted' }, 'La zona en la que trabajamos para vuestra campaña, con sus localidades y los datos de población y renta.'), box); }
+  else if (t.key === 'info') {
+    const hide = (f) => /pass|secret|clave|token/i.test(`${f.type || ''} ${f.k || ''}`);
+    put(el('h1', {}, 'Información'), el('p', { class: 'muted' }, 'Lo que AVANIA ha preparado para vosotros. El cliente solo puede leerlo; se cambia desde la ficha.'),
+      ...info.map((def) => renderSection({ ...def, groups: def.groups.map((g) => ({ ...g, fields: g.fields.filter((f) => !hide(f)) })) }, sections[def.key] || {}, { team: false, save: noSave })));
+    page.querySelectorAll('button, input, select, textarea').forEach((x) => { x.disabled = true; });
+  }
   else if (t.key === 'resultados') {
     const r = await api('GET', `/api/clients/${id}/kpis`).catch(() => ({ connected: false }));
     put(el('h1', {}, 'Resultados'), r.connected ? kpisNode(r.kpis) : el('div', { class: 'card' }, el('p', { class: 'muted', style: 'margin:0' }, 'Todavía no hay resultados que enseñar. Aparecerán aquí en cuanto la campaña esté en marcha.')));
@@ -790,11 +806,11 @@ async function clientPreview({ id, tab, client, sections, fd, dental, role }) {
     await unlocked(async () => {
       const { credentials } = await api('GET', `/api/clients/${id}/credentials`);
       const box = el('div'); put(el('h1', {}, 'Credenciales'), box);
-      renderCredentials(box, { mode: 'client', services: formDef.services, list: async () => ({ credentials }), create: noSave, update: noSave });
+      renderCredentials(box, { mode: 'client', services: formDef.services, list: () => api('GET', `/api/clients/${id}/credentials`), create: (b) => api('POST', `/api/clients/${id}/credentials`, b), update: (cid, b) => api('PUT', `/api/credentials/${cid}`, b) });
     });
   } else if (t.sec) {
     const secData = async () => (['accesos', 'meta'].includes(t.key) ? (await api('GET', `/api/clients/${id}/restricted`)).sections[t.key] : sections[t.key]) || {};
-    await unlocked(async () => { const data = await secData(); put(el('h1', {}, `${t.sec.num} ${t.sec.title}`), renderSection(t.sec, data, { team: false, save: noSave })); });
+    await unlocked(async () => { const data = await secData(); put(el('h1', {}, `${t.sec.num} ${t.sec.title}`), renderSection(t.sec, data, { team: false, save: saveFor(t.key) })); });
   }
   view.replaceChildren(bar, main);
 }

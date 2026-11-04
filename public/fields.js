@@ -24,6 +24,25 @@ function urlRow(input) {
   return el('div', { class: 'urlrow' }, input, a);
 }
 
+// Correos: junto al campo (o la fila) sale un icono de sobre que abre el programa de correo con un mensaje nuevo para esa dirección.
+const MAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+export function mailLink(email, who) {
+  const a = el('a', { class: 'mailbtn', title: 'Enviar correo' + (who ? ` a ${who}` : ''), 'aria-label': 'Enviar correo' + (who ? ` a ${who}` : '') });
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.innerHTML = '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.500 7l8.500 6 8.500-6"/>';
+  a.append(svg);
+  const set = (v) => { const t = String(v || '').trim(); a.hidden = !MAIL_OK.test(t); if (!a.hidden) a.href = `mailto:${t}`; };
+  set(email);
+  return Object.assign(a, { set });
+}
+// Caja de texto con su icono «enviar correo», que sigue lo que se escribe.
+function mailRow(input, who) {
+  const m = mailLink(input.value, who);
+  input.addEventListener('input', () => m.set(input.value));
+  return el('div', { class: 'urlrow' }, input, m);
+}
+const isMailCol = (c) => c.type === 'email' || /^(correo|email)$/i.test(c.k);
+
 let uid = 0;
 // Los avisos salen en una región viva para que el lector de pantalla los lea.
 const toasts = el('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
@@ -202,7 +221,7 @@ export function renderSection(sec, data, { team, save, preview, clientName }) {
   // Cada grupo es una tarjeta con su icono; las tablas, el horario y los documentos ocupan todo el ancho.
   const grid = el('div', { class: 'gcards' });
   // Lo que es solo de la agencia no se enseña al cliente (ni los campos ni los grupos que se quedan vacíos).
-  const hiddenFromClient = (f) => f.owner === 'team' && !f.shared;
+  const hiddenFromClient = (f) => f.owner === 'team' && !f.shared && !f.clientEdit;
   const secAgency = sec.groups.flatMap((g) => g.fields).every((f) => f.owner === 'team');
   sec.groups.forEach((g, i) => {
     if (!team && g.fields.every(hiddenFromClient)) return;
@@ -213,9 +232,9 @@ export function renderSection(sec, data, { team, save, preview, clientName }) {
       const node = field(f, data, change, team, preview);
       // Vista de la agencia: cada campo lleva el color de quién lo ve (navy = solo agencia, gris = lo ve el cliente).
       if (team) {
-        const agency = f.owner === 'team' && !f.shared;
+        const agency = f.owner === 'team' && !f.shared && !f.clientEdit;
         node.dataset.scope = agency ? 'agency' : 'client';
-        if (f.owner === 'team' && !secAgency) node.querySelector('label')?.append(el('span', { class: 'scope-tag' }, f.shared ? 'Lo rellena la agencia · lo ve el cliente' : 'Solo agencia'));
+        if (f.owner === 'team' && !secAgency) node.querySelector('label')?.append(el('span', { class: 'scope-tag' }, f.clientEdit ? 'Lo ve y lo edita también el cliente' : f.shared ? 'Lo rellena la agencia · lo ve el cliente' : 'Solo agencia'));
       }
       const big = ['table', 'horario', 'docs', 'calendario'].includes(f.type);
       node.classList.add('w' + (f.w || (big || f.search ? 12 : 6)));
@@ -253,7 +272,7 @@ const cellText = (v, c) => {
 };
 
 function field(f, data, change, team, preview) {
-  const readonly = f.owner === 'team' && !team;
+  const readonly = f.owner === 'team' && !f.clientEdit && !team;
   const label = el('label', {}, f.label);
   const hint = null;   // sin subetiquetas bajo el nombre del campo
   const v = data[f.k];
@@ -344,8 +363,8 @@ function field(f, data, change, team, preview) {
     // Día abierto: el interruptor guardado o, en datos antiguos, si tiene alguna hora.
     for (const [d] of DIAS) { const x = (h[d] = h[d] || {}); if (typeof x.abre !== 'boolean') x.abre = hrs.some((c) => x[c]); }
     const ins = {}, sw = {};
-    const apply = (d) => hrs.forEach((c) => { ins[d + c].disabled = !h[d].abre; });
-    const t = (d, c, ph) => (ins[d + c] = el('input', { type: 'time', value: h[d][c] || '', 'aria-label': ph, disabled: !h[d].abre, oninput: (e) => { h[d][c] = e.target.value; change(f.k, h); } }));
+    const apply = (d) => hrs.forEach((c) => { ins[d + c].classList.toggle('dim', !h[d].abre); });   // un día cerrado se atenúa, pero se puede escribir siempre: al poner una hora, el día pasa a abierto
+    const t = (d, c, ph) => (ins[d + c] = el('input', { type: 'time', value: h[d][c] || '', 'aria-label': ph, class: h[d].abre ? '' : 'dim', oninput: (e) => { h[d][c] = e.target.value; if (e.target.value && !h[d].abre) { h[d].abre = true; sw[d].checked = true; apply(d); } change(f.k, h); } }));
     // Copia el día de arriba (lunes) al resto: abierto o cerrado y sus horas.
     const copiar = () => {
       const [first, ...rest] = DIAS.map(([d]) => d);
@@ -362,14 +381,18 @@ function field(f, data, change, team, preview) {
     return el('div', { class: 'field' }, label, hint, input);
   }
   if (f.type === 'table') {
-    const rows = Array.isArray(v) && v.length ? v : [{}, {}, {}].map(() => ({}));
+    const rows = Array.isArray(v) && v.length ? v : [{}];   // una sola fila de salida: con «+ Añadir fila» se suman y con ✕ se quitan (también la última)
     data[f.k] = rows;
     const body = el('tbody');
     const draw = () => {
+      if (!rows.length) return body.replaceChildren(el('tr', {}, el('td', { colspan: f.cols.length + 1, class: 'muted' }, 'Nada añadido todavía. Pulsa «+ Añadir fila».')));
       body.replaceChildren(...rows.map((r, i) => el('tr', {},
         f.cols.map((c) => el('td', {}, c.type === 'select'
           ? el('select', { 'aria-label': c.label, onchange: (e) => { r[c.k] = e.target.value; change(f.k, rows); } }, el('option', { value: '' }, '—'), c.options.map((o) => el('option', { value: o, selected: r[c.k] === o }, o)))
-          : el('input', { type: c.type === 'date' ? 'date' : 'text', ...(c.type === 'date' ? DATE_ATTRS : {}), value: r[c.k] || '', 'aria-label': c.label, oninput: (e) => { if (c.type === 'date' && !okDate(e.target.value)) return; r[c.k] = e.target.value; change(f.k, rows); } }))),
+          : (() => {
+            const inp = el('input', { type: c.type === 'date' ? 'date' : 'text', ...(c.type === 'date' ? DATE_ATTRS : {}), value: r[c.k] || '', 'aria-label': c.label, oninput: (e) => { if (c.type === 'date' && !okDate(e.target.value)) return; r[c.k] = e.target.value; change(f.k, rows); } });
+            return team && f.k !== 'personas' && isMailCol(c) ? mailRow(inp, r.nombre || r.etiqueta) : inp;   // los correos del equipo de AVANIA no llevan el icono
+          })())),
         el('td', {}, el('button', { class: 'btn ghost small', title: 'Quitar fila', 'aria-label': 'Quitar fila', onclick: () => { rows.splice(i, 1); change(f.k, rows); draw(); } }, '✕')))));
     };
     draw();
@@ -397,6 +420,7 @@ function field(f, data, change, team, preview) {
   } else {
     input = el('input', { type: { number: 'number', date: 'date', url: 'url', email: 'email', tel: 'tel' }[f.type] || 'text', ...(f.type === 'date' ? DATE_ATTRS : {}), value: v || '', oninput: (e) => { if (f.type === 'date' && !okDate(e.target.value)) return; change(f.k, e.target.value); } });
     if (f.type === 'url' || f.type === 'text') input = urlRow(input);
+    if (f.type === 'email' && team) input = mailRow(input);
     if (f.app) input = el('div', { class: 'applink' }, el('span', { class: 'apptile', title: appName(f.app) }, appIcon(f.app)), input);
     if (f.k === 'bm_id') {
       const raw = input.querySelector ? input.querySelector('input') : input;
@@ -448,6 +472,27 @@ export function helpBlock(help) {
   return el('details', { class: 'help' }, el('summary', {}, '¿Cómo se hace? Ayuda y vídeo'), helpBody(help));
 }
 
+// «Se entra con» Google, Meta o Apple: accesos que no llevan contraseña propia, solo se verifican con uno de esos servicios.
+const SVGNS = 'http://www.w3.org/2000/svg';
+const svgEl = (tag, attrs = {}) => { const n = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
+export const SSO_LABEL = { google: 'Google', meta: 'Meta', apple: 'Apple' };
+export function ssoIcon(k) {
+  const svg = svgEl('svg', { viewBox: '0 0 24 24', class: 'ssoico', 'aria-hidden': 'true' });
+  if (k === 'google') for (const [c, d] of [['#4285F4', 'M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z'], ['#34A853', 'M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z'], ['#FBBC05', 'M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z'], ['#EA4335', 'M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z']]) svg.append(svgEl('path', { fill: c, d }));
+  else if (k === 'meta') svg.append(svgEl('path', { fill: 'none', stroke: '#0866FF', 'stroke-width': 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M2.6 12c0-2.4 1.4-4.5 3.3-4.5 3.2 0 6.2 9 10.2 9 1.9 0 3.3-2.1 3.3-4.5s-1.4-4.5-3.3-4.5c-4 0-7 9-10.2 9C4 16.5 2.6 14.4 2.6 12z' }));
+  else svg.append(svgEl('path', { fill: 'currentColor', d: 'M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701' }));
+  return svg;
+}
+/** Tres casillas con su icono. `onChange(lista)` se llama al marcar o desmarcar; `.value()` devuelve lo marcado. */
+export function ssoPicker(selected = [], onChange = () => {}) {
+  const boxes = Object.keys(SSO_LABEL).map((k) => el('input', { type: 'checkbox', value: k, checked: selected.includes(k), 'aria-label': `Se entra con ${SSO_LABEL[k]}` }));
+  const get = () => boxes.filter((b) => b.checked).map((b) => b.value);
+  boxes.forEach((b) => b.addEventListener('change', () => onChange(get())));
+  const w = el('div', { class: 'ssopick', role: 'group', 'aria-label': 'Se entra con' }, boxes.map((b) => el('label', { class: 'ssochip' }, b, ssoIcon(b.value), SSO_LABEL[b.value])));
+  w.value = get; return w;
+}
+export const ssoPills = (list = []) => (list.length ? el('span', { class: 'pill ok ssopill', title: `Se entra con ${list.map((k) => SSO_LABEL[k]).join(', ')}` }, ...list.map(ssoIcon), `con ${list.map((k) => SSO_LABEL[k]).join(' · ')}`) : null);
+
 // Tabla de credenciales. mode 'team' (con ver/copiar) o 'client' (solo escribir).
 export function renderCredentials(root, { mode, services, list, create, update, remove, reveal, askCode, canSee }) {
   const body = el('div', { class: 'credlist' });
@@ -494,12 +539,15 @@ export function renderCredentials(root, { mode, services, list, create, update, 
         el('strong', { class: 'svc' }, r.service),
         el('span', { class: 'muted sum' }, [r.company, r.username || r.email].filter(Boolean).join(' · ')),
         el('span', { class: 'grow' }),
-        el('span', { class: 'pill ' + (r.has_password ? 'ok' : 'warn') }, r.has_password ? 'contraseña guardada' : 'sin contraseña'),
+        ssoPills(r.login_with),
+        r.has_password || !(r.login_with || []).length ? el('span', { class: 'pill ' + (r.has_password ? 'ok' : 'warn') }, r.has_password ? 'contraseña guardada' : 'sin contraseña') : null,
         el('span', { class: 'pill ' + STATUS[r.status] }, r.status),
         el('span', { class: 'chev' }, '›')),
       el('div', { class: 'credgrid' },
         field('Empresa', cell(r, 'company', 'Empresa')), field('Usuario', cell(r, 'username', 'Usuario')),
-        field('Correo', cell(r, 'email', 'Correo', 'email')), field('Contraseña', pwCell),
+        field('Correo', cell(r, 'email', 'Correo', 'email')),
+        el('div', { class: 'ssofield' }, el('span', { class: 'ssol' }, 'Se entra con (sin contraseña)'), ssoPicker(r.login_with || [], async (list) => { try { Object.assign(r, (await update(r.id, { login_with: list })).credential); mark('Guardado ✓', 'ok'); draw(); } catch (er) { mark(er.message, 'bad'); } })),
+        field('Contraseña', pwCell),
         field('Enlace de acceso', urlRow(cell(r, 'url', 'Enlace de acceso', 'url'))), field('Notas', cell(r, 'notes', 'Notas')),
         mode === 'team' ? field('Estado', st) : '',
         remove ? el('div', { class: 'credfoot' }, el('button', { class: 'btn ghost small', onclick: async () => {

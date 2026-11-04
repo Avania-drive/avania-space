@@ -185,9 +185,7 @@ export async function kpisFor(clientId, { refresh = false, sections = {} } = {})
     for (const o of opps) { const v = ov.get(o.id); if (v) { if (v.campaign) o.campaign = v.campaign; if (v.creative) o.creative = v.creative; } }
     const data = compute(opps, stageNames, { negocio, meta: sections.meta || {} });
     const now = Date.now();
-    data.sin_atribuir = opps.filter((o) => o.t >= now - 30 * DAY && (!o.campaign || !o.creative))
-      .map((o) => ({ id: o.id, creado: o.created, etapa: stageNames[o.stage] || null, fuente: o.source || null, campana: o.campaign || '', anuncio: o.creative || '' }));
-    data.conocidos = { campanas: [...new Set(opps.map((o) => o.campaign).filter(Boolean))], anuncios: [...new Set(opps.map((o) => o.creative).filter(Boolean))] };
+    data.sin_anuncio = opps.filter((o) => o.t >= now - 30 * DAY && !o.creative).length;   // solo el número; ya no se listan
     await q('update client_funnels set last_ok = now(), last_error = null where client_id = $1', [clientId]);
     cache.set(clientId, { at: Date.now(), data });
     return data;

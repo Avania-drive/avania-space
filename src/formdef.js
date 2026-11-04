@@ -1,7 +1,8 @@
 // Definición del documento de onboarding.
 // Tipos de campo: text, textarea, number, url, email, tel, date, select, tri (Sí/No/No lo sé),
 // table (filas repetibles; cada columna puede ser type 'date' o 'select' con options), docs (enlaces a documentos de Drive con vista previa).
-// `owner: 'team'` = solo lo edita el equipo y el cliente no lo ve; con `shared: true` el cliente lo ve en solo lectura.
+// `owner: 'team'` = solo lo edita el equipo y el cliente no lo ve; con `shared: true` el cliente lo ve en solo lectura; con `clientEdit: true`
+// el cliente también lo ve y lo edita (sigue contando en el avance de AVANIA, no en el suyo).
 // `optional: true` = no cuenta para el avance (listas libres, como las acciones del cronograma).
 const TRI = ['Sí', 'No', 'No lo sé'];
 const ACCION_COLS = [
@@ -18,11 +19,11 @@ export const FORM = [
       title: 'Vuestro proyecto',
       fields: [
         { k: 'categoria', label: 'Categoría del cliente', hint: 'Dental, industrial, seguros… Elige una o crea otra; el color es el de su etiqueta.', type: 'categoria', owner: 'team' },
-        { k: 'fecha_firma', label: 'Firma del contrato', type: 'date', owner: 'team', optional: true },
-        { k: 'fecha_inicio', label: 'Inicio real del proyecto', type: 'date', owner: 'team' },
-        { k: 'fecha_montaje', label: 'Objetivo de montaje completo', type: 'date', owner: 'team', optional: true },
-        { k: 'responsable_cuenta', label: 'Responsable de cuenta en AVANIA', type: 'text', owner: 'team' },
-        { k: 'enlace_clickup', label: 'Espacio del proyecto en ClickUp', type: 'url', app: 'clickup', owner: 'team' },
+        { k: 'fecha_firma', label: 'Firma del contrato', type: 'date', owner: 'team', clientEdit: true, optional: true },
+        { k: 'fecha_inicio', label: 'Inicio real del proyecto', type: 'date', owner: 'team', clientEdit: true },
+        { k: 'fecha_montaje', label: 'Objetivo de montaje completo', type: 'date', owner: 'team', clientEdit: true, optional: true },
+        { k: 'responsable_cuenta', label: 'Responsable de cuenta en AVANIA', type: 'text', owner: 'team', clientEdit: true },
+        { k: 'enlace_clickup', label: 'Espacio del proyecto en ClickUp', type: 'url', app: 'clickup', owner: 'team', clientEdit: true },
         { k: 'enlace_drive', label: 'Carpeta compartida en Google Drive', type: 'url', app: 'drive', owner: 'team' },
         { k: 'funnels_location', label: 'ID de la subcuenta de Avania Funnels', hint: 'En la subcuenta de Avania Funnels: Ajustes › Información del negocio › ID de la ubicación. Con él Space enlaza directo a su subcuenta.', type: 'text', owner: 'team' },
       ],
@@ -46,22 +47,17 @@ export const FORM = [
         { k: 'profesionales', label: 'Número de profesionales en plantilla', type: 'number' },
         { k: 'descripcion', label: '¿Quiénes sois?', hint: 'Vuestra historia en pocas líneas y lo que os hace especiales. Lo usamos para escribir los anuncios con vuestra voz.', type: 'textarea' },
       ] },
-      { title: '1.2 Área de influencia', intro: 'Hasta dónde queréis atraer clientes, para configurar la segmentación geográfica de los anuncios.', fields: [
-        { k: 'radio', label: 'Radio de captación', hint: 'Kilómetros alrededor de la empresa', type: 'text' },
-        { k: 'localidades', label: 'Localidades concretas', hint: 'Pueblos o barrios que os interesan', type: 'textarea' },
-        { k: 'zonas_excluir', label: 'Zonas a excluir', hint: 'De las que NO queréis clientes', type: 'textarea' },
-      ] },
       { title: '1.3 Quién forma la empresa y a quién llamamos', intro: 'Las personas de vuestro equipo con las que nos comunicaremos durante el proyecto, con su teléfono y WhatsApp directos.', fields: [
-        { k: 'responsables', label: 'Responsables', type: 'table', cols: [
+        { k: 'responsables', label: 'Equipo', hint: 'Las personas con las que hablamos durante el proyecto. Si solo hay una, déjala sola; con «+ Añadir fila» sumas más y con ✕ quitas las que sobren.', type: 'table', cols: [
           { k: 'nombre', label: 'Nombre' }, { k: 'cargo', label: 'Papel que desempeña' }, { k: 'correo', label: 'Correo' }, { k: 'telefono', label: 'Teléfono' }, { k: 'whatsapp', label: 'WhatsApp' },
         ] },
-        { k: 'plantilla', label: 'Resto del equipo', hint: 'Opcional: el resto de personas que forman la empresa y a qué se dedica cada una', type: 'table', optional: true, cols: [{ k: 'nombre', label: 'Nombre' }, { k: 'puesto', label: 'Puesto' }, { k: 'area', label: 'Área o especialidad' }] },
+        { k: 'plantilla', label: 'Resto de la plantilla', hint: 'Opcional: el resto de personas que forman la empresa y a qué se dedica cada una', type: 'table', optional: true, cols: [{ k: 'nombre', label: 'Nombre' }, { k: 'puesto', label: 'Puesto' }, { k: 'area', label: 'Área o especialidad' }] },
       ] },
       { title: '1.4 Teléfonos, WhatsApp y correos', intro: 'Los números y correos generales de la empresa, cada uno con su etiqueta (recepción, administración, urgencias…).', fields: [
         { k: 'telefonos', label: 'Teléfonos', type: 'table', cols: [{ k: 'etiqueta', label: 'Etiqueta' }, { k: 'numero', label: 'Número' }, { k: 'horario', label: 'Horario de atención' }] },
         { k: 'whatsapps', label: 'WhatsApp', type: 'table', cols: [{ k: 'etiqueta', label: 'Etiqueta' }, { k: 'numero', label: 'Número' }, { k: 'horario', label: 'Horario de atención' }] },
         { k: 'correos', label: 'Correos generales', type: 'table', cols: [{ k: 'etiqueta', label: 'Etiqueta' }, { k: 'correo', label: 'Correo' }] },
-        { k: 'fuera_horario', label: '¿Qué pasa si escriben o llaman cuando nadie atiende?', hint: 'Por ejemplo, si un paciente escribe por la tarde y nadie contesta hasta el día siguiente. Contadnos quién responde y cuándo.', type: 'textarea' },
+        { k: 'fuera_horario', label: '¿Qué pasa si escriben o llaman cuando nadie atiende?', hint: 'Por ejemplo, si un cliente escribe por la tarde y nadie contesta hasta el día siguiente. Contadnos quién responde y cuándo.', type: 'textarea' },
       ] },
       { title: '1.5 Tratamientos, precios y primera visita', intro: 'Lo que ofrecéis y lo que cuesta, para que el setter y los anuncios hablen con datos reales. Si no tenéis precios exactos, dadnos rangos.', fields: [
         { k: 'tratamientos', label: 'Tratamientos y precios', hint: 'Qué ofrecéis y cuánto cuesta cada uno. Por ejemplo, en ortodoncia: invisible (Invisalign u otra marca), brackets metálicos, estéticos o linguales, ortodoncia infantil o interceptiva y retenedores.', type: 'table', dental: true, cols: [{ k: 'tratamiento', label: 'Tratamiento' }, { k: 'precio', label: 'Precio o rango' }, { k: 'notas', label: 'Notas' }] },
@@ -69,7 +65,7 @@ export const FORM = [
         { k: 'financiacion_detalle', label: 'Condiciones de la financiación', hint: 'Cuota aproximada, plazos, financiera, entrada…', type: 'textarea', dental: true, optional: true },
         { k: 'primera_visita', label: 'La primera visita, ¿es gratuita o de pago?', type: 'select', options: ['Gratuita', 'De pago', 'Depende'], dental: true },
         { k: 'primera_incluye', label: '¿Qué incluye la primera visita?', hint: 'Precio si es de pago; si incluye escáner 3D, simulación del resultado, radiografía, presupuesto…', type: 'textarea', dental: true },
-        { k: 'referentes', label: 'Pruebas de que sois referentes', hint: 'Número de casos tratados, nivel de proveedor Invisalign, máster o título de especialista del doctor o la doctora, número de reseñas y nota en Google…', type: 'textarea', dental: true },
+        { k: 'referentes', label: 'Pruebas de que sois referentes', hint: 'Número de casos tratados, nivel de proveedor Invisalign, máster o título de especialista de quien atiende, número de reseñas y nota en Google…', type: 'textarea', dental: true },
       ] },
     ],
   },
@@ -128,10 +124,20 @@ export const FORM = [
     ],
   },
   {
-    key: 'agenda', num: '3', title: 'Horarios y equipo de atención',
-    intro: 'Antes de llegar a vosotros, nuestro equipo ya ha hablado con cada paciente potencial y ha confirmado su interés. Vuestra parte es llamarle para darle hora, como máximo en 24 horas laborables, porque el interés se enfría en uno o dos días. Necesitamos saber quién lo va a hacer y cuándo.',
+    key: 'zona', num: '1', title: 'Área de influencia',
     groups: [
-      { title: '3.1 Quién atiende a los pacientes potenciales', intro: 'Recibirán aviso en cuanto os pasemos uno.', fields: [
+      { title: '1.2 Área de influencia', intro: 'Hasta dónde queréis atraer clientes, para configurar la segmentación geográfica de los anuncios.', fields: [
+        { k: 'radio', label: 'Radio de captación', hint: 'Kilómetros alrededor de la empresa', type: 'text' },
+        { k: 'localidades', label: 'Localidades concretas', hint: 'Pueblos o barrios que os interesan', type: 'textarea' },
+        { k: 'zonas_excluir', label: 'Zonas a excluir', hint: 'De las que NO queréis clientes', type: 'textarea' },
+      ] },
+    ],
+  },
+  {
+    key: 'agenda', num: '3', title: 'Horarios y equipo de atención',
+    intro: 'Antes de llegar a vosotros, nuestro equipo ya ha hablado con cada cliente potencial y ha confirmado su interés. Vuestra parte es llamarle para darle hora, como máximo en 24 horas laborables, porque el interés se enfría en uno o dos días. Necesitamos saber quién lo va a hacer y cuándo.',
+    groups: [
+      { title: '3.1 Quién atiende a los clientes potenciales', intro: 'Recibirán aviso en cuanto os pasemos uno.', fields: [
         { k: 'atienden', label: 'Personas', type: 'table', cols: [
           { k: 'nombre', label: 'Nombre' }, { k: 'cargo', label: 'Cargo' }, { k: 'whatsapp', label: 'WhatsApp' }, { k: 'horario', label: 'Horario de disponibilidad' },
         ] },
@@ -145,7 +151,7 @@ export const FORM = [
         { k: 'horarios_primeras', label: 'Horarios de primeras visitas', hint: 'Días y horas en los que dais primeras visitas (por ejemplo: lunes y miércoles de 16:00 a 18:00)', type: 'textarea' },
         { k: 'duracion', label: 'Duración de una primera visita', type: 'text' },
         { k: 'antelacion', label: 'Antelación mínima para dar cita', hint: '¿Con cuánto tiempo necesitáis avisar?', type: 'text' },
-        { k: 'software_citas', label: 'Software de gestión de citas', hint: 'Gesden, Odontonet, Clinic Cloud, agenda propia...', type: 'text' },
+        { k: 'software_citas', label: 'Software de gestión de citas', hint: 'agenda propia, Google Calendar, Gesden, Clinic Cloud...', type: 'text' },
       ] },
       { title: '3.4 Fechas señaladas y cierres', intro: 'Fechas en las que queráis hacer un esfuerzo especial de comunicación (aniversario, llegada de un equipo nuevo, campañas de temporada...) y festivos o cierres en los que no atendéis.', fields: [
         { k: 'fechas', label: 'Fechas', type: 'table', cols: [{ k: 'fecha', label: 'Fecha' }, { k: 'tipo', label: 'Tipo', type: 'select', options: ['Cierre', 'Campaña o comunicación', 'Otra'] }, { k: 'motivo', label: 'Motivo' }, { k: 'comunicar', label: 'Qué queréis comunicar' }] },
@@ -154,10 +160,10 @@ export const FORM = [
   },
   {
     key: 'rodaje', num: '4', title: 'Rodaje de vídeos (fechas)',
-    intro: 'El contrato incluye media jornada de rodaje en la empresa con un equipo profesional, de la que salen entre 15 y 20 vídeos. El paciente quiere ver la cara del doctor antes de pedir cita.',
+    intro: 'El contrato incluye media jornada de rodaje en la empresa con un equipo profesional, de la que salen entre 15 y 20 vídeos. El cliente quiere ver la cara de quien le va a atender antes de pedir cita.',
     groups: [
       { title: '4.1 Quién graba', fields: [
-        { k: 'doctor', label: 'Doctor o doctora que grabará', type: 'text' },
+        { k: 'doctor', label: 'Profesional que grabará', type: 'text' },
         { k: 'cargo_doctor', label: 'Cargo y especialidad', type: 'text' },
         { k: 'ha_grabado', label: '¿Ha grabado vídeo antes?', hint: 'Si no, no hay problema: le preparamos antes del rodaje', type: 'tri' },
         { k: 'otros', label: '¿Grabará alguien más?', hint: 'Higienista, coordinadora, otro profesional', type: 'text' },
@@ -166,11 +172,11 @@ export const FORM = [
         { k: 'dias_rodaje', label: 'Fechas posibles para el rodaje', hint: 'Pulsad los días en el calendario: dos o tres opciones de media jornada. Quedan señalados con un círculo.', type: 'calendario' },
         { k: 'fechas_rodaje', label: 'Notas sobre las fechas', hint: 'Cualquier aclaración sobre las fechas', type: 'textarea' },
         { k: 'franja', label: 'Franja preferida', type: 'select', options: ['Mañana', 'Tarde'] },
-        { k: 'sala', label: 'Sala disponible para grabar', hint: 'Gabinete, sala de espera, despacho...', type: 'text' },
-        { k: 'ruido', label: '¿Hay ruido o interferencias previsibles?', hint: 'Obras cercanas, aparatos, tránsito de pacientes', type: 'text' },
+        { k: 'sala', label: 'Sala disponible para grabar', hint: 'Sala de trabajo, sala de espera, despacho...', type: 'text' },
+        { k: 'ruido', label: '¿Hay ruido o interferencias previsibles?', hint: 'Obras cercanas, aparatos, tránsito de clientes', type: 'text' },
       ] },
-      { title: '4.3 Temas que queréis tratar', intro: 'Las preguntas que más os hacen los pacientes en consulta. Cada una puede ser un vídeo.', fields: [
-        { k: 'temas', label: 'Temas', type: 'table', cols: [{ k: 'tema', label: 'Pregunta o tema' }, { k: 'porque', label: 'Por qué es importante para vuestros pacientes' }] },
+      { title: '4.3 Temas que queréis tratar', intro: 'Las preguntas que más os hacen los clientes en consulta. Cada una puede ser un vídeo.', fields: [
+        { k: 'temas', label: 'Temas', type: 'table', cols: [{ k: 'tema', label: 'Pregunta o tema' }, { k: 'porque', label: 'Por qué es importante para vuestros clientes' }] },
         { k: 'guiones_url', label: 'Enlace a los guiones', hint: 'Documento o carpeta con los guiones de los vídeos', type: 'url', search: 'drive' },
       ] },
     ],
@@ -234,19 +240,19 @@ export const FORM = [
   {
     key: 'whatsapp', num: '7', title: 'WhatsApp: teléfonos y número de atención',
     groups: [
-      { title: '7.1 Número de WhatsApp para pacientes', intro: 'Los pacientes potenciales reciben mensajes automáticos por WhatsApp. Recomendamos un número dedicado, separado del teléfono de la empresa. Si preferís que os lo gestionemos, lo contratamos nosotros con la tarifa mínima (unos 2,50 €/mes a vuestro cargo) y os lo facturamos aparte.', fields: [
+      { title: '7.1 Número de WhatsApp para clientes', intro: 'Los clientes potenciales reciben mensajes automáticos por WhatsApp. Recomendamos un número dedicado, separado del teléfono de la empresa. Si preferís que os lo gestionemos, lo contratamos nosotros con la tarifa mínima (unos 2,50 €/mes a vuestro cargo) y os lo facturamos aparte.', fields: [
         { k: 'wa_business', label: '¿Tenéis WhatsApp Business?', type: 'select', options: ['Sí', 'No'] },
-        { k: 'wa_numero', label: 'Número actual', hint: 'Si ya tenéis uno para pacientes', type: 'tel' },
+        { k: 'wa_numero', label: 'Número actual', hint: 'Si ya tenéis uno para clientes', type: 'tel' },
         { k: 'wa_nuevo', label: '¿Preferís que os gestionemos un número nuevo?', type: 'select', options: ['Sí', 'No'] },
       ] },
-      { title: '7.2 Grupo de WhatsApp del proyecto', intro: 'Crearemos un grupo con vuestro equipo y el nuestro para el día a día y los avisos de pacientes.', fields: [
+      { title: '7.2 Grupo de WhatsApp del proyecto', intro: 'Crearemos un grupo con vuestro equipo y el nuestro para el día a día y los avisos de clientes.', fields: [
         { k: 'grupo1', label: 'Teléfono 1 para el grupo', type: 'tel' },
         { k: 'grupo2', label: 'Teléfono 2 para el grupo', type: 'tel' },
         { k: 'grupo3', label: 'Teléfono 3 para el grupo', type: 'tel' },
       ] },
-      { title: '7.3 Avania Setex', intro: 'El asistente de WhatsApp que atiende a vuestros pacientes. Lo rellenamos nosotros.', fields: [
-        { k: 'setex_numero', label: 'Número de WhatsApp de Avania Setex', hint: 'El número que facilita Zernio y desde el que escribe el asistente', type: 'tel', owner: 'team' },
-        { k: 'setex_enlace', label: 'Enlace a su cuenta de Avania Setex', hint: 'Panel de la empresa: https://setter.goavania.com/panel', type: 'url', owner: 'team' },
+      { title: '7.3 Avania Setex', intro: 'El asistente de WhatsApp que atiende a vuestros clientes. Lo rellenamos nosotros.', fields: [
+        { k: 'setex_numero', label: 'Número de WhatsApp de Avania Setex', hint: 'El número que facilita Zernio y desde el que escribe el asistente', type: 'tel', owner: 'team', clientEdit: true },
+        { k: 'setex_enlace', label: 'Enlace a su cuenta de Avania Setex', hint: 'Panel de la empresa: https://setter.goavania.com/panel', type: 'url', owner: 'team', clientEdit: true },
       ] },
     ],
   },
@@ -262,7 +268,7 @@ export const FORM = [
         { k: 'tipografias', label: 'Tipografías', hint: 'Las letras de vuestra marca', type: 'text' },
         { k: 'tono', label: 'Tono de comunicación', hint: 'Cercano, profesional, técnico…', type: 'text' },
       ] },
-      { title: 'Fotos, vídeos y otros materiales', intro: 'Mínimo 10 fotos de la empresa, fotos del equipo, antes y después (si disponéis) y vídeos existentes. Sobre los antes y después: consultad el consentimiento firmado de los pacientes; no publicamos ninguna imagen sin vuestra confirmación.', fields: [
+      { title: 'Fotos, vídeos y otros materiales', intro: 'Mínimo 10 fotos de la empresa, fotos del equipo, antes y después (si disponéis) y vídeos existentes. Sobre los antes y después: consultad el consentimiento firmado de los clientes; no publicamos ninguna imagen sin vuestra confirmación.', fields: [
         { k: 'drive_materiales', label: 'Carpeta de Drive con los materiales', hint: 'Enlace a la carpeta donde se han subido logotipos, fotos y vídeos', type: 'url' },
         { k: 'subidos', label: '¿Habéis subido ya los materiales?', type: 'select', options: ['Sí', 'Parcialmente', 'Todavía no'] },
         { k: 'faltan', label: 'Si falta algo, ¿para cuándo lo tendréis?', type: 'text' },
@@ -271,7 +277,7 @@ export const FORM = [
   },
   {
     key: 'formacion', num: '10', title: 'Formación de vuestro equipo · CLOSE CARE',
-    intro: 'Antes de lanzar la campaña haremos una sesión de formación de dos horas con las personas que vayan a atender a los pacientes. Es obligatoria: sin ella no activamos la campaña.',
+    intro: 'Antes de lanzar la campaña haremos una sesión de formación de dos horas con las personas que vayan a atender a los clientes. Es obligatoria: sin ella no activamos la campaña.',
     groups: [{ title: 'Sesión de formación', fields: [
       { k: 'asistentes', label: 'Quién asistirá', hint: 'Nombres y cargos. Deben venir todos los que vayan a atender pacientes', type: 'textarea' },
       { k: 'fechas_formacion', label: 'Fechas y horas posibles', hint: 'Dos o tres opciones', type: 'textarea' },
@@ -279,10 +285,10 @@ export const FORM = [
   },
   {
     key: 'cronograma', num: '9', title: 'Calendario de acciones',
-    intro: 'Todas las fechas del proyecto en un solo sitio: lo que hace AVANIA y lo que tenéis que hacer vosotros, con su prioridad. Junto a estas listas se muestran automáticamente el rodaje, la formación y las fechas señaladas que ya habéis indicado en otras secciones.',
+    intro: 'Todas las fechas del proyecto en un solo sitio: lo que hace AVANIA y lo que tenéis que hacer vosotros, con su prioridad. Junto a estas listas se muestran automáticamente el rodaje y la formación que ya habéis indicado en otras secciones. Los horarios, festivos y fechas señaladas de la empresa no entran aquí: viven en Empresa › Horarios.',
     groups: [
       { title: '0.0 Acciones de AVANIA', intro: 'Lo que hacemos nosotros y para cuándo. Lo rellena nuestro equipo.', fields: [
-        { k: 'acciones_avania', label: 'Acciones de AVANIA', type: 'table', owner: 'team', shared: true, optional: true, cols: ACCION_COLS },
+        { k: 'acciones_avania', label: 'Acciones de AVANIA', type: 'table', owner: 'team', shared: true, clientEdit: true, optional: true, cols: ACCION_COLS },
       ] },
       { title: '0.0 Acciones del cliente', intro: 'Lo que necesitamos de vosotros y para cuándo. Podéis añadir vuestras propias acciones y marcarlas como hechas.', fields: [
         { k: 'acciones_cliente', label: 'Acciones del cliente', type: 'table', optional: true, cols: ACCION_COLS },
@@ -303,24 +309,24 @@ export const FORM = [
   },
   {
     key: 'cierre', num: '11', title: 'Revisión final y confidencialidad',
-    intro: 'Todos los accesos y datos se tratan con absoluta confidencialidad y se usan únicamente para la ejecución de vuestro proyecto. Los datos de vuestros pacientes son datos de salud, con protección reforzada por el RGPD: actuamos como encargados del tratamiento. Podéis retirar cualquier acceso cuando queráis.',
+    intro: 'Todos los accesos y datos se tratan con absoluta confidencialidad y se usan únicamente para la ejecución de vuestro proyecto. Los datos de vuestros clientes están protegidos por el RGPD (y los de salud, si los hay, con protección reforzada): actuamos como encargados del tratamiento. Podéis retirar cualquier acceso cuando queráis.',
     groups: [{ title: 'Antes de devolvernos el documento', fields: [
       { k: 'ok_clinica', label: 'Datos de la empresa completos', type: 'check' },
       { k: 'ok_rodaje', label: 'Fechas propuestas para el rodaje de vídeos', type: 'check' },
       { k: 'ok_materiales', label: 'Logo y mínimo 10 fotos subidas a la carpeta de Drive', type: 'check' },
       { k: 'ok_google', label: 'Acceso concedido a marketing@avania.es en Google', type: 'check' },
       { k: 'ok_meta', label: 'Acceso de socio concedido en el Business Manager de Meta', type: 'check' },
-      { k: 'ok_atencion', label: 'Personas que atenderán a los pacientes, con teléfono y horario', type: 'check' },
+      { k: 'ok_atencion', label: 'Personas que atenderán a los clientes, con teléfono y horario', type: 'check' },
       { k: 'ok_whatsapp', label: 'Decisión sobre el número de WhatsApp', type: 'check' },
       { k: 'ok_formacion', label: 'Asistentes y fechas para la formación', type: 'check' },
     ] }],
   },
 ];
 
-const SHORT = {'clinica': 'Datos', 'agenda': 'Horarios', 'materiales': 'Marca', 'mercado': 'Clientes y ofertas', 'oferta': 'Análisis de AVANIA', 'negocio': 'Objetivos', 'accesos': 'Web y Google', 'meta': 'Meta', 'whatsapp': 'WhatsApp', 'cronograma': 'Acciones', 'rodaje': 'Rodaje', 'formacion': 'Formación', 'cierre': 'Revisión final', 'proyecto': 'Proyecto', 'avania': 'Quién es quién'};   // nombres cortos para el menú
+const SHORT = {'clinica': 'Datos', 'zona': 'Área de influencia', 'agenda': 'Horarios', 'materiales': 'Marca', 'mercado': 'Clientes y ofertas', 'oferta': 'Análisis de AVANIA', 'negocio': 'Objetivos', 'accesos': 'Web y Google', 'meta': 'Meta', 'whatsapp': 'WhatsApp', 'cronograma': 'Acciones', 'rodaje': 'Rodaje', 'formacion': 'Formación', 'cierre': 'Revisión final', 'proyecto': 'Proyecto', 'avania': 'Quién es quién'};   // nombres cortos para el menú
 // Las cinco áreas del alta, en el orden en que se rellenan. Cada una lleva su barra de avance.
 export const BLOCKS = [
-  { key: 'empresa', title: 'La empresa y quién la forma', short: 'Empresa', sections: ['clinica', 'agenda', 'materiales'] },
+  { key: 'empresa', title: 'La empresa y quién la forma', short: 'Empresa', sections: ['clinica', 'zona', 'agenda', 'materiales'] },
   { key: 'mercado', title: 'Sus clientes, competencia y ofertas', short: 'Análisis', sections: ['mercado', 'oferta', 'negocio'] },
   { key: 'tecnico', title: 'Enlaces técnicos', short: 'Enlaces', sections: ['accesos', 'meta', 'whatsapp'] },
   { key: 'cronograma', title: 'Fechas de acciones', short: 'Fechas', sections: ['cronograma', 'rodaje', 'formacion', 'cierre'] },
@@ -352,12 +358,13 @@ const LAYOUT = {
   negocio: ['valor_medio:3', 'tasa_cierre:3', 'ciclo_venta:3', 'margen:3', 'objetivo_leads:4', 'objetivo_citas:4', 'objetivo_ventas:4', 'cpl_objetivo:4', 'respuesta_max:4', 'fuentes:4', 'pipeline_id:6', 'etapas:12'],
   proyecto: ['categoria:6', 'responsable_cuenta:6', 'fecha_firma:4', 'fecha_inicio:4', 'fecha_montaje:4', 'enlace_clickup:6', 'enlace_drive:6', 'funnels_location:6'],
   clinica: ['nombre_comercial:6', 'razon_social:6', 'cif:4', 'fecha_apertura:4', 'telefono:4', 'direccion:8', 'ciudad:4', 'web:4', 'instagram:4', 'facebook:4', 'gabinetes:6', 'profesionales:6', 'descripcion:12',
-    'radio:4', 'localidades:4', 'zonas_excluir:4', 'responsables:12', 'plantilla:12', 'telefonos:12', 'whatsapps:12', 'correos:12', 'fuera_horario:12',
+    'responsables:12', 'plantilla:12', 'telefonos:12', 'whatsapps:12', 'correos:12', 'fuera_horario:12',
     'tratamientos:12', 'financiacion:6', 'financiacion_detalle:6', 'primera_visita:6', 'primera_incluye:6', 'referentes:12'],
   mercado: ['clientes_tipo:12', 'clientes_origen:12', 'clientes_mejores:6', 'clientes_no:6', 'competidores:12', 'ofertas:12', 'estrella:6', 'diferencial:6', 'objeciones:12'],
   cronograma: ['acciones_avania:12', 'acciones_cliente:12'],
   avania: ['personas:12', 'como_contactar:12'],
   oferta: ['avatar_resumen:12', 'avatar_docs:12', 'competencia_resumen:12', 'competencia_docs:12', 'oferta_resumen:12', 'oferta_docs:12'],
+  zona: ['radio:4', 'localidades:4', 'zonas_excluir:4'],
   agenda: ['atienden:12', 'horario:12', 'cierres:12', 'huecos:6', 'duracion:6', 'horarios_primeras:12', 'antelacion:6', 'software_citas:6', 'fechas:12'],
   rodaje: ['doctor:6', 'cargo_doctor:6', 'ha_grabado:6', 'otros:6', 'dias_rodaje:7', 'franja:5', 'sala:5', 'ruido:5', 'fechas_rodaje:5', 'temas:12', 'guiones_url:12'],
   accesos: ['dominio:6', 'hosting:6', 'cms:6', 'resp_web:6', 'resp_web_contacto:6', 'google_alta:6', 'google_quien:6', 'ga_enlace:6', 'gtm_id:6', 'gmb_enlace:6', 'gsc_enlace:6', 'gads_id:6', 'tiktok:6', 'linkedin:6', 'youtube:6', 'otros_canales:12'],
@@ -434,10 +441,10 @@ export function gates(sections, creds = {}, allowed = null) {
   const all = [
     { key: 'meta', label: 'Acceso a Meta', done: g('meta', 'bm_acceso') === 'Sí', todo: 'Falta el acceso a Meta Business Manager', ask: 'Daros acceso a vuestro Business Manager de Meta', why: 'Sin él no podemos crear ni gestionar vuestros anuncios.', section: 'meta', delegated: del('meta', 'bm_acceso') },
     { key: 'pixel', label: 'Píxel', done: g('meta', 'pixel') === 'Sí', todo: 'Falta instalar el píxel', ask: 'Instalar el píxel de Meta en vuestra web', why: 'Sin él no podemos lanzar la campaña. Si no sabéis cómo, decidnos quién lleva vuestra web.', section: 'meta', delegated: del('meta', 'pixel') },
-    { key: 'whatsapp', label: 'WhatsApp', done: !!String(g('whatsapp', 'wa_numero') || '').trim() || g('whatsapp', 'wa_nuevo') === 'Sí', todo: 'Falta decidir el número de WhatsApp', ask: 'Decidir el número de WhatsApp para pacientes', why: 'Recomendamos uno solo para pacientes. Si preferís, os gestionamos uno nuevo.', section: 'whatsapp', delegated: del('whatsapp', 'wa_numero', 'wa_nuevo') },
+    { key: 'whatsapp', label: 'WhatsApp', done: !!String(g('whatsapp', 'wa_numero') || '').trim() || g('whatsapp', 'wa_nuevo') === 'Sí', todo: 'Falta decidir el número de WhatsApp', ask: 'Decidir el número de WhatsApp para clientes', why: 'Recomendamos uno solo para clientes. Si preferís, os gestionamos uno nuevo.', section: 'whatsapp', delegated: del('whatsapp', 'wa_numero', 'wa_nuevo') },
     { key: 'credenciales', label: 'Credenciales', done: nCred > 0 && !creds.pendiente, todo: 'Faltan credenciales por recibir', ask: 'Dejarnos los accesos que no podáis delegar', why: 'Siempre que se pueda, mejor acceso delegado. Si no, guardad aquí la contraseña: nosotros no podemos verla sin doble verificación.', section: 'credenciales' },
     { key: 'rodaje', label: 'Rodaje', done: isFilled({ type: 'calendario' }, g('rodaje', 'dias_rodaje')), todo: 'Faltan fechas de rodaje', ask: 'Proponer fechas para el rodaje', why: 'Dos o tres opciones de media jornada en el calendario.', section: 'rodaje' },
-    { key: 'formacion', label: 'Formación', done: !!String(g('formacion', 'fechas_formacion') || '').trim(), todo: 'Faltan fechas de formación', ask: 'Elegir fechas para la formación', why: 'Dos horas con las personas que atenderán a los pacientes.', section: 'formacion' },
+    { key: 'formacion', label: 'Formación', done: !!String(g('formacion', 'fechas_formacion') || '').trim(), todo: 'Faltan fechas de formación', ask: 'Elegir fechas para la formación', why: 'Dos horas con las personas que atenderán a los clientes.', section: 'formacion' },
   ];
   return allowed ? all.filter((x) => x.section === 'credenciales' || allowed.has(x.section)) : all;
 }
@@ -447,7 +454,7 @@ export function sanitizeSection(key, input, { team }) {
   if (!s) return null;
   const out = {};
   for (const f of fieldsOf(s)) {
-    if (f.owner === 'team' && !team) continue;
+    if (f.owner === 'team' && !f.clientEdit && !team) continue;
     if (!(f.k in input)) continue;
     const v = input[f.k];
     if (f.type === 'table') {

@@ -393,3 +393,145 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 ## 29-oct — Respuestas de Paula Fernández en «La empresa» (1.5)
 - Cargadas en Clínica de Paula Fernández Riveiro → La empresa → «1.5 Tratamientos, precios y primera visita», a partir de sus mensajes de WhatsApp: tabla de tratamientos con rangos, financiación (sin intereses a 6 meses, 1 año o 15 meses, y CaixaBank con cuota reducida), primera visita, y referentes (certificada en Invisalign desde los inicios, Platinum en 2019, ya no trabaja con la marca).
 - La opción «Depende del tratamiento» de `primera_visita` pasa a «Depende»: en su caso es gratuita si hace el estudio y 40 € si no, y el detalle va en «¿Qué incluye la primera visita?».
+
+## 29-oct — Palabras de ámbito dental generalizadas y prueba del informe
+- Textos visibles de `formdef.js`, `report.js` y `ayuda.json`: «paciente(s)» pasa a «cliente(s)», «doctor/doctora» a «profesional» y «gabinete» a «sala de trabajo». Las claves internas (`doctor`, `cargo_doctor`, `gabinetes`) y los campos marcados `dental` (financiación, Invisalign, número de gabinetes) no se tocan. La frase del RGPD ya no da por hecho que sean datos de salud.
+- Prueba real del informe: `node scripts/probar-informe.mjs [nombre]` envía el informe de un cliente a `REPORT_TO` con asunto «[PRUEBA]» y sin marcar `report_sent_at`. Enviado a pascual.vila@avania.es con Clínica de Paula Fernández (SMTP respondió «queued»). Reiniciado `avania-space`.
+
+## 29-oct — Menú de la ficha: menos pestañas
+- «Equipo del cliente» pasa dentro de «Personas» (debajo de la tabla de personas) y «Notas» dentro de «Documentos» (debajo de la carpeta de Drive). El menú pierde dos entradas; los enlaces antiguos `#/c/<id>/equipo` y `/notas` abren la pestaña nueva. Cambio en `public/app.js` (`pages`, alias de pestaña y ramas `personas` y `documentos`).
+- Probado en Chromium (1360 y 390 px) con API simulada: sin errores de consola, y los cuatro bloques se ven en su sitio.
+- No se ha tocado la vista del cliente (portal), donde «Mi equipo» sigue aparte.
+
+## 29-oct — Mapa y estudio sociodemográfico de la zona
+- En La empresa → Datos, justo debajo de «Área de influencia», hay un desplegable «Mapa y estudio de la zona» (solo equipo). Lee dirección, ciudad, radio y localidades del propio formulario; no hay campos nuevos.
+- Mapa (Leaflet 1.9.4 desde cdnjs + teselas OpenStreetMap): chincheta azul para la empresa con el círculo del radio y verdes para cada localidad. Se sitúan con Nominatim (1 petición/s, caché de 90 días en `cache/`).
+- Estudio: datos oficiales por municipio del Atlas de distribución de renta de los hogares del INE (operación 353; hoy año 2024): población, edad media, % menores de 18 y de 65 o más, personas por hogar, hogares unipersonales, % población española, renta neta por persona y por hogar. Total con media ponderada por población y un texto de «Lectura de la zona». Si un dato no existe se muestra «—» o «Sin dato municipal»; un barrio o pedanía usa los datos de su municipio.
+- Código: `src/zona.js` (ruta `GET /api/clients/:id/zona` en `src/index.js`) y `zonaCard` en `public/extra.js`. La tabla del INE de cada provincia está fijada en `RENTA_TABLE` (comprobada contra municipios de las 52 provincias); la de demografía se resuelve por posición. Caché en disco de un mes por provincia.
+- Límites: máximo 15 localidades; si la dirección cae en otro municipio que la ciudad indicada se usa el centro de la ciudad y se avisa. No se calculan municipios dentro del radio que no estén escritos en «Localidades».
+- Probado en Chromium (1360 y 390 px) con Toledo, Olías del Rey, Bargas, Sonseca e Illescas.
+
+## 29-oct — «Área de influencia» pasa a su propia pestaña
+- Menú de Empresa: Datos · Área de influencia · Horarios · Marca. Es una sección nueva (`zona`) con los mismos tres campos (radio, localidades, zonas a excluir); la numeración sale sola (1.2 Área de influencia, 1.3 Horarios, 1.4 Marca).
+- Migración `sql/016_area_influencia_seccion.sql` (aplicada): copia esos tres campos, y sus marcas «lo hará Avania», de `clinica` a `zona` (2 clientes tenían datos) y los quita de `clinica`; las categorías con plantilla que llevaban Datos añaden `zona`.
+- El mapa y estudio de la zona vive ahora en esa pestaña, con un botón más grande («Ver mapa y estudio de la zona»). `GET /api/clients/:id/zona` lee dirección y ciudad de Datos, y radio y localidades de Área de influencia.
+- Mapa: las teselas de OpenStreetMap exigen referer; se pide `referrerPolicy: 'origin'` en la capa porque la cabecera general es `no-referrer`.
+
+## 29-oct — Mapa: pestaña abierta, tabla en tarjeta y chincheta exacta de la empresa
+- El mapa y estudio de la zona ya no es un desplegable: sale abierto y carga al entrar en Área de influencia. La tabla de datos va en una tarjeta blanca con esquinas redondeadas y los miles se escriben siempre con punto.
+- Dirección de la empresa (`locateAddress` en `src/zona.js`): se limpia como la escribiría una persona (C/ → Calle, quita «Local 11», «Bajo», «1º A», «España»…) y se busca primero en CartoCiudad (callejero oficial del IGN, con número de portal y comprobando municipio, número y nombre de la calle); si no, OpenStreetMap a nivel de calle; y como último recurso el centro de la ciudad. Cada resultado lleva `precision`: portal, calle o ciudad, y el panel lo dice (en naranja si no es el portal exacto).
+- La empresa se marca con una chincheta azul en forma de gota con un edificio dentro, más grande y siempre con su etiqueta; las localidades siguen siendo puntos verdes.
+- Con las direcciones reales de hoy: Paula Fernández (Vigo) sale en el portal exacto; SEDI (C/ Guadarrama 71, Toledo) no existe con ese nombre en el callejero de Toledo capital y sale en el centro de la ciudad con aviso (revisar cómo está escrita).
+
+## 29-oct — Documentos: subir archivos y vista previa
+- **Subir:** nueva tarjeta «Documentos del cliente» en la pestaña Documentos: botón «Subir documentos» o arrastrar archivos (hasta 15 MB cada uno; se guardan en la base de datos, tabla `client_files`, `sql/017_client_files.sql`). Cada uno tiene Ver, Descargar y quitar. Solo los ve el equipo.
+- **Rutas:** `GET/POST /api/clients/:id/files`, `GET/DELETE /api/clients/:id/files/:fid`. La subida va en binario y exige la cabecera `X-Space-Upload: 1` (sustituye a «solo JSON» como freno de CSRF en esa ruta).
+- **Seguridad:** PDF, imágenes (png, jpg, webp, gif) y texto plano se muestran dentro; el resto (Word, Excel, HTML, SVG…) siempre se descarga. Solo esa ruta se puede enmarcar (`X-Frame-Options: SAMEORIGIN`).
+- **Vista previa:** vuelve el panel de la derecha en Documentos. Se abre con «Ver» en los archivos subidos, en «Documentos del alta» y en «Ver aquí» de cada archivo de la carpeta de Drive. Word y Excel subidos no se pueden previsualizar (se dice y se ofrece descargar); los de Drive sí.
+- La cabecera de la pestaña ya no dice «Lo ve el cliente»: Documentos y notas es solo de la agencia.
+- Prueba: `node scripts/e2e-archivos.mjs` (11 comprobaciones, cliente y usuario de prueba que se borran al terminar).
+
+## 30-oct — Icono «enviar correo» en los correos de los clientes
+- Junto a cada correo de una persona del cliente sale un sobre (`.mailbtn`, `mailLink` en `public/fields.js`) que abre el programa de correo con un mensaje nuevo para esa dirección (`mailto:`). Está en: tablas «Responsables» y «Correos generales» (La empresa), campos de tipo correo y lista «Equipo del cliente» (usuarios del portal) en Personas.
+- Solo en la vista del equipo; el sobre se oculta si lo escrito no es un correo válido y sigue lo que se escribe.
+- No lo llevan los correos del equipo de AVANIA («Equipo de AVANIA», directorio de Configuración y usuarios de la agencia), ni el portal del cliente.
+
+## 30-oct — Documentos y notas: fuera la carpeta de Drive
+- Se quitan de la pestaña Documentos las tarjetas «Carpeta de Google Drive» y «Documentos de la carpeta» (el acceso a Drive ya está en el icono de la cabecera de la ficha). Quedan: Documentos del cliente (subidas), Documentos del alta y Notas. El portal del cliente sigue con su sección de Drive.
+
+## 30-oct — Drive: árbol de carpetas y carpeta principal de marketing
+- `src/drive.js` devuelve ahora el árbol (carpetas y subcarpetas con sus documentos, 3 niveles) en vez de una lista plana.
+- Carpeta principal: `DRIVE_ROOT_FOLDER` en .env (enlace de la carpeta MARKETING). Un cliente solo puede enlazar una carpeta que cuelgue de ella; si no, el equipo ve «no está dentro de la carpeta principal» y el cliente no ve nada.
+- Pantalla (agencia y portal): carpetas desplegables con su número de documentos; cada documento abre en Drive.
+- Sigue pendiente la cuenta de servicio de Google (`GOOGLE_SA_FILE`) y compartir con ella la carpeta MARKETING; probado con un Google simulado.
+
+## 30-oct — Drive: una carpeta, un cliente
+- Al guardar «Carpeta compartida en Google Drive» (Proyecto) se rechaza si esa misma carpeta ya está en otro cliente. El cliente nunca elige carpeta: el portal lee solo la que el equipo enlazó a su ficha.
+- Se rechaza también enlazar la carpeta principal de marketing a un cliente (al guardar y al leer): cada cliente necesita su subcarpeta propia.
+
+## 30-oct — Drive: estructura [CLIENTES] / cliente / MARKETING
+- Corrección: la carpeta que se dio como «principal» era en realidad el MARKETING de Paula Fernández. La estructura real es `[CLIENTES] AVANIA TODOS / <cliente> / MARKETING / carpetas`.
+- `DRIVE_ROOT_FOLDER` ahora es la carpeta [CLIENTES]. A un cliente solo se le puede enlazar una carpeta llamada MARKETING que cuelgue de una carpeta de cliente dentro de [CLIENTES]; se rechaza la raíz, la carpeta del cliente entera y cualquier otra. Probado con Google simulado.
+- La cuenta de servicio debe tener acceso de lector a [CLIENTES] (para poder comprobar el origen de cada carpeta); Space solo enseña al cliente lo que hay dentro de su MARKETING.
+
+## 30-oct — Drive: la cuenta de servicio solo ve las MARKETING que se le comparten
+- Cambio de criterio: no se comparte [CLIENTES] con la cuenta de servicio, solo la carpeta MARKETING de cada cliente, una a una. Se quita `DRIVE_ROOT_FOLDER` del .env (queda como opción en `drive.js`).
+- Al leer se exige que la carpeta enlazada se llame MARKETING; el resto lo garantiza el propio Drive (lo que no se comparte con la cuenta, Space no lo puede leer). Se mantiene el rechazo de carpeta repetida en dos clientes.
+
+## 30-oct — Drive conectado
+- Cuenta de servicio `space-drive-lector@avania-space.iam.gserviceaccount.com` en `secrets/google-drive.json` (permisos 600), `GOOGLE_SA_FILE` en el .env, Space reiniciado.
+- Probado con Drive real: la MARKETING de Paula Fernández (ya enlazada en su ficha) se lee entera (108 documentos, 5 carpetas). [CLIENTES] y la carpeta del cliente dan «sin permiso» (no compartidas) y una subcarpeta se rechaza por no llamarse MARKETING.
+
+## 30-oct — Portal del cliente al ancho de la vista del equipo + Drive en Documentos
+- Portal: mismo ancho que la vista del equipo (1180 px, antes 760), cabecera en una sola línea y reparto en dos columnas en escritorio (Inicio: avance y tareas a la izquierda, proyecto, fechas, herramientas y avisos a la derecha; Documentos: carpeta y árbol). En móvil sigue una columna. Clase `portal` en el body y `.cols` en `space.css`; solo afecta al portal (el formulario de alta sigue en 760).
+- Documentos de la vista del equipo vuelve a enseñar el árbol de carpetas de Drive del cliente (con «Ver aquí» en el visor), con avisos técnicos si falta compartir la carpeta.
+
+## 30-oct — Vista de cliente: más ancha y con carpetas que se abren
+- La «Vista de cliente» (ficha del equipo) seguía con 760 px (`.pvpage`) y bloqueaba todos los clics (solo lectura): ahora ocupa el ancho de la ficha (1124 px), con dos columnas solo en pantallas de 1300 px o más, y las carpetas de Drive se abren y cierran y «Actualizar» funciona. El resto sigue bloqueado.
+- Pendiente de decidir: unificar «Documentos del cliente» (subidas a Space) con el Drive subiendo directamente a Drive; la cuenta de servicio hoy es solo lectura y Google no deja a una cuenta de servicio crear archivos en carpetas de «Mi unidad» de otro usuario.
+
+## 30-oct — Cronograma: las fechas de la empresa ya no se mezclan con las del proyecto
+- `timelineOf` (src/plan.js) dejaba entrar las «Fechas señaladas» de Empresa › Horarios (aniversarios, festivos, cierres) en las fechas del proyecto, tanto en la ficha como en el portal y en el informe. Se quitan: el cronograma solo lleva firma, inicio, montaje, rodaje, formación, fases y acciones. Los textos explicativos lo dicen.
+
+## 30-oct — «Ver cliente»: el superadministrador decide qué ve cada cliente
+- Migración 018: `clients.client_view` (solo guarda los cambios hechos a mano). Valores de fábrica en `src/visibility.js`: lo que el cliente ya veía sigue viéndose (Cronograma, Resultados, Personas, Documentos, Credenciales y las secciones del alta, incluida Área de influencia) y lo interno de la agencia sigue oculto (Resumen, Enlaces, Registro, Objetivos, Proyecto).
+- Ficha del cliente: la etiqueta «Lo ve el cliente / Solo agencia» de cada página pasa a ser la casilla **Ver cliente** (solo superadministrador; el resto del equipo ve el estado). `PUT /api/clients/:id/client-view`. El menú de la ficha pinta cada opción según el estado.
+- Portal: el menú se arma con esas casillas y el servidor lo comprueba en cada petición (formulario del alta, guardar secciones, credenciales, Resultados, Drive, Inicio) con un 403 si está desactivado. Páginas nuevas: **Área de influencia** (mapa y estudio de la zona, `/api/p/zona`) e **Información** (secciones internas que se activen, solo lectura y sin contraseñas, `/api/p/shared`).
+- «Vista de cliente» de la ficha usa los mismos ajustes.
+
+## 30-oct — Documentos: solo la carpeta de Drive
+- La pestaña Documentos de la ficha deja solo «Documentos de la carpeta» (árbol de Drive) y las Notas: se quitan «Documentos del cliente» (subidas a Space) y «Documentos del alta». Los 4 archivos .gdoc ya subidos siguen guardados en la base pero no se muestran en ningún sitio.
+- Botón **Subir documentos** (super_admin y admin): elige la carpeta de destino, permite crear una carpeta nueva dentro de la elegida (`POST /api/clients/:id/drive/folders`, `createFolder` en `src/drive.js`, comprueba que cuelgue de la carpeta MARKETING del cliente) y abre esa carpeta en Drive para arrastrar los archivos.
+- Comprobado con Drive real: la cuenta de servicio es editora de MARKETING de Paula y crear carpetas funciona (carpeta de prueba creada y borrada); subir archivos da 403 «Service Accounts do not have storage quota» (Google no da espacio a las cuentas de servicio en «Mi unidad»). Para subir archivos desde Space haría falta una unidad compartida, delegación de dominio o OAuth con una cuenta de usuario.
+- `createFolder` usa el permiso de escritura de Drive solo para crear carpetas; el resto sigue siendo lectura.
+
+## 30-oct — Documentos: explorador de archivos y vista previa en ventana emergente
+- La lista de Drive pasa a ser un explorador: árbol de carpetas a la izquierda (con número de documentos), a la derecha miga de pan, tarjetas de subcarpetas y tabla de archivos con icono por tipo (PDF, DOC, XLS, PPT, IMG, VID, AUD), tipo, tamaño, fecha de modificación (la de subida, al pasar el ratón), quién lo tocó (solo equipo) y botón Ver. Columnas ordenables y buscador por nombre en todo el árbol. En móvil, una columna. Drive aporta ahora `size`, `createdTime` y `lastModifyingUser`.
+- La vista previa («Ver») se abre en una ventana emergente con X (y Esc) en lugar del panel lateral; ya no se reserva ese espacio en Documentos ni en las secciones con documentos.
+- Drive no tiene estado de «realizado»: si se quiere, habría que marcarlo en Space por archivo.
+
+## 30-oct — Documentos del cliente en su propia voz
+- En el portal y en la «Vista de cliente», Documentos habla al cliente («Vuestros documentos», «Aquí tenéis los materiales, informes y documentos de vuestro proyecto…», buscador y mensajes de carpeta vacía en segunda persona del plural), sin la tarjeta repetida de la carpeta: el botón «Abrir en Google Drive» va en la cabecera del explorador. La carpeta raíz se llama «Todos los documentos» y no muestra el nombre interno MARKETING. Sin «Subir documentos», «Ver» ni la columna «Por», que son del equipo. Si Drive no responde, el cliente ve un aviso con el botón de abrir la carpeta en lugar de nada.
+
+## 30-oct — «Vista de cliente» con lectura y escritura
+- La «Vista de cliente» de la ficha ya no es solo lectura: campos y botones funcionan y lo que se cambia (teléfonos, correos, dirección, fechas…) se guarda en la ficha del cliente con el mismo guardado de la ficha (`PUT /api/clients/:id/sections/:clave`); Credenciales usa también los accesos del equipo. Lo único que sigue de solo lectura es «Información» (lo interno que el superadministrador decide enseñar) y los enlaces que llevan al portal del cliente (no hay sesión de cliente aquí).
+- Probado con una maqueta: se cambia un campo y sale el `PUT` a la sección.
+
+## 30-oct — Roles del equipo de AVANIA
+- Directorio del equipo (Configuración › `agency_people`): Pascual Vila → CEO y estrategia; Andrea Navarro → Estrategia y análisis; Jesús Vizcaino → Programación (las responsabilidades quedan como estaban: solo Jesús tiene «Área técnica»).
+
+## 30-oct — Horarios: las horas siempre se pueden escribir
+- En el horario de Empresa › Horarios, las horas de un día «cerrado» estaban desactivadas hasta pulsar el interruptor del día, y parecía que no se podía editar (también en el portal). Ahora nunca se desactivan: un día cerrado se atenúa y, al escribir una hora, pasa solo a abierto.
+- Pendiente de decidir con Pascual: los campos que son de AVANIA (sección Proyecto y alguno suelto en WhatsApp y Cronograma) siguen sin poder tocarlos el cliente; ver riesgos (enlace de Drive y subcuenta de Funnels).
+
+## 30-oct — Todo editable para el cliente (salvo Drive, Funnels y categoría) y tablas de equipo
+- Nuevo marcador `clientEdit: true` en `formdef.js`: el campo sigue siendo de AVANIA a efectos de avance, pero el cliente lo ve y lo edita. Puesto en: Proyecto (firma, inicio real, objetivo de montaje, responsable de cuenta, espacio de ClickUp), WhatsApp (número y enlace de Avania Setex) y Calendario de acciones (Acciones de AVANIA). La sección Proyecto pasa a verse en el alta del cliente con esos cinco campos. **Siguen solo de la agencia**: carpeta de Drive, ID de la subcuenta de Funnels y categoría (el cliente podría leer los datos de otro cliente o cambiar su plantilla). El servidor los descarta aunque se los envíen. Comprobado contra el servidor real con un usuario de portal temporal (borrado después).
+- Tablas: una sola fila de salida (antes tres en blanco), se puede quitar también la última y, vacía, enseña «Nada añadido todavía». «Responsables» pasa a llamarse **Equipo** (y «Resto del equipo» a «Resto de la plantilla»); el informe dice «Equipo:».
+- El error al borrar filas del equipo no se reprodujo contra el servidor real (ficha, vista de cliente y portal guardan bien con las filas vaciadas); si vuelve a salir, hace falta el texto exacto del mensaje.
+- Pendiente de decidir: mover la parametrización de la cuenta (categoría, carpeta de Drive, subcuenta de Funnels) a una tarjeta de «Configuración de la agencia».
+
+## 31-oct — Alta «desde Avania Funnels» con el ID de la subcuenta
+- La ventana «+ Desde Avania Funnels» ya no pide el ID de un contacto ni consulta el CRM: pide nombre de la empresa, **ID de la subcuenta** de Avania Funnels (la ya creada para el cliente), ciudad opcional y categoría. El ID se guarda como `funnels_location` (Proyecto) y en `funnels_contact_id`, así el enlace `/c/{{location.id}}` del submenú abre su ficha. Los clientes dados de alta antes siguen con `{{contact.id}}`.
+
+## 31-oct — Instituto Dental Parque: datos desde Notion
+- Rellenados desde la ficha de Notion «Clínica Dental Parque»: CIF, dirección, teléfono, equipo (Julián García, correo y teléfono), carpeta de Drive y número de Avania Setex (+34 644 16 00 72). Sin tocar nombre comercial ni ciudad. Falta la razón social (Notion no la trae).
+- Credenciales de Instituto Dental Parque copiadas desde la base «Acceso a RRSS» de Notion a sus credenciales en Space (cifradas, estado «recibida», sin verificar): Instagram (@institutodentalparque), Instagram (anterior), Facebook y Gmail. El resto de servicios sigue pendiente.
+
+- 1-nov: Resultados (Dental Parque y todos): se quita la lista «Leads sin campaña o anuncio» y en Estadísticas aparece el número «Leads sin anuncio asignado» (últimos 30 días; solo el equipo, no el portal del cliente). El endpoint de asignación manual sigue ahí por si hiciera falta.
+
+- 1-nov: Bóvedas (accesos de cada cliente, pestaña Contraseñas, y Bóveda de herramientas): casillas «Se entra con» Google, Meta y Apple con sus iconos (sql/019_acceso_con.sql, ya aplicada). Un acceso marcado así cuenta como «recibida» sin contraseña y deja de salir como «sin contraseña»; la contraseña sigue pudiéndose guardar. También lo ve y lo marca el cliente en su formulario/portal. Código en src/sso.js, fields.js (ssoPicker) y space.css.
+
+- 1-nov: Clientes (vista Por estado): el grupo «En campaña» sale desplegado; si lo pliegas, se recuerda mientras buscas o filtras. «Pausados» sigue plegado.
+
+## 3-nov — Instituto Dental Parque: ficha completada desde la carpeta de Drive
+- Copia previa de la ficha: `/root/backups/avania-space-idp-antes-de-importar-drive-2026-11-03.json`. Solo se rellenó lo que estaba vacío y se añadieron filas nuevas a las tablas (nada se pisó).
+- **Datos de la empresa:** razón social (Clínica BIOBUCAL SLU), web, descripción, plantilla (6 personas del equipo, según su web), teléfono de recepción, correo general, tratamientos (6) y cargo de Julián García (director médico). **Horarios:** personas que atienden.
+- **Clientes y ofertas:** 4 tipos de cliente (avatares), origen de pacientes, competidores (Albelo, Sanion Clínica Altozano, Rafa Pla, Ibermonte), 2 ofertas, servicio estrella, diferencial y objeciones.
+- **Nuestros análisis:** conclusiones de avatar, competencia y oferta con enlaces a las hojas y documentos de Drive (avatares, análisis de la web, ACO + guiones, copys de Meta). **Marca:** logotipos y recursos de marca (enlaces), carpeta de material del cliente y tono de comunicación.
+- **5 notas internas** (no visibles al cliente): contrato y propuesta (sin DNI ni IBAN), informes mensuales de junio y julio de 2025, reunión de onboarding, anuncios y guiones, y lo que se revisó pero no se pasó (plantillas de otro negocio, formularios vacíos).
+- Carpeta de Drive enlazada: se cambia a «2. MARKETING» del cliente (antes estaba la carpeta del cliente entera, que Space rechaza). La comprobación del nombre acepta ahora numeración delante («2. MARKETING»). Falta compartir esa carpeta con la cuenta de servicio de Space para ver el explorador.
+
+## 4-nov — Commit, reinicio y bitácora al día
+- Se agrupa en un commit todo lo hecho desde el 30-oct (Drive con explorador y vista previa, «Ver cliente», portal ancho, vista de cliente con escritura, equipo y tablas, campos editables, ficha de Instituto Dental Parque) más lo pendiente de la sesión del 1-nov (casillas «Se entra con» Google/Meta/Apple, ajustes de KPIs). Migraciones 016-019 ya aplicadas.
+- `.gitignore`: ahora excluye también `secrets/` (cuenta de servicio de Google) y `cache/`. Nunca se versionan el .env ni los secretos.
+- Servicio reiniciado (`pm2 restart avania-space`).

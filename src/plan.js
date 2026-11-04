@@ -5,11 +5,11 @@ import { FORM, BLOCKS, gates, isFilled } from './formdef.js';
 const ORDER = { alta: 0, media: 1, baja: 2 };
 const norm = (v) => ({ alta: 'alta', media: 'media', baja: 'baja' }[String(v || '').trim().toLowerCase()] || 'media');
 // Prioridad por sección: lo que bloquea el lanzamiento, primero.
-const PRIO_CLIENT = { meta: 'alta', accesos: 'alta', whatsapp: 'alta', rodaje: 'alta', formacion: 'alta', clinica: 'media', agenda: 'media', materiales: 'media', mercado: 'media', cierre: 'baja' };
+const PRIO_CLIENT = { meta: 'alta', accesos: 'alta', whatsapp: 'alta', rodaje: 'alta', formacion: 'alta', clinica: 'media', zona: 'media', agenda: 'media', materiales: 'media', mercado: 'media', cierre: 'baja' };
 const PRIO_TEAM = { proyecto: 'alta', negocio: 'alta', oferta: 'alta', avania: 'media' };
 const GATE_FIELDS = new Set(['meta.bm_acceso', 'meta.pixel', 'whatsapp.wa_numero', 'whatsapp.wa_nuevo', 'rodaje.dias_rodaje', 'formacion.fechas_formacion']);
 const fieldsOf = (s) => s.groups.flatMap((g) => g.fields);
-const hidden = (f) => f.owner === 'team' && !f.shared;
+const hidden = (f) => f.owner === 'team' && !f.shared && !f.clientEdit;
 const areaOf = (key) => BLOCKS.find((b) => b.sections.includes(key));
 
 /** 'YYYY-MM-DD' desde un valor escrito a mano ('2026-11-05' o '5/11/2026'); null si no se entiende. */
@@ -106,7 +106,6 @@ export function timelineOf(sections, { now = today(), includeEmpty = false } = {
   const fTxt = String(g('formacion').fechas_formacion || '').trim();
   if (fTxt) add(null, 'Formación del equipo (fechas propuestas por el cliente)', 'cliente', { section: 'formacion', note: fTxt });
   for (const f of fasesOf(sections)) { const d = isoDate(f.fecha); if (d) add(d, f.fase, WHO[f.quien] || 'ambos', { section: 'proceso', done: f.estado === 'Hecho', note: f.estado || '', fase: true }); }
-  for (const r of g('agenda').fechas || []) if (String(r?.fecha || r?.motivo || '').trim()) add(isoDate(r.fecha), r.motivo ? `Fecha señalada: ${r.motivo}` : 'Fecha señalada', 'cliente', { section: 'agenda', note: r.fecha && !isoDate(r.fecha) ? String(r.fecha) : (r.comunicar || '') });
   for (const [key, who] of [['acciones_avania', 'avania'], ['acciones_cliente', 'cliente']])
     for (const r of g('cronograma')[key] || []) if (String(r?.accion || '').trim())
       add(isoDate(r.fecha), String(r.accion).trim(), who, { section: 'cronograma', priority: norm(r.prioridad), done: /^hecha$/i.test(r.estado || ''), note: r.estado || '' });

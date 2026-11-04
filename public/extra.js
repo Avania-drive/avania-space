@@ -1,6 +1,5 @@
 // Pantallas del esquema (fase 1): panel general, configuración, notas, enlaces y documentos del cliente.
-import { driveFilesNode } from './clientview.js';
-import { el, api, toast, askText, askConfirm, fmtDate, toUrl, appIcon, openModal, notice } from './fields.js';
+import { el, api, toast, askText, askConfirm, fmtDate, toUrl, appIcon, openModal, notice, mailLink, ssoPicker, ssoPills } from './fields.js';
 
 const catPill = (name, color) => el('span', { class: 'catpill', style: `--c:${color || '#667085'}` }, name);
 const ago = (iso) => { const d = Math.floor((Date.now() - new Date(iso)) / 864e5); return d <= 0 ? 'hoy' : d === 1 ? 'ayer' : `hace ${d} días`; };
@@ -14,7 +13,7 @@ export function scopeForm(fd, allowed, dental) {
 }
 
 // ¿Es una sección solo de la agencia (el cliente no la ve)? Lo es si está marcada así o si todos sus campos son de equipo.
-export const agencyOnly = (sec) => (sec.owner === 'team' && !sec.shared) || sec.groups.every((g) => g.fields.every((f) => f.owner === 'team' && !f.shared));
+export const agencyOnly = (sec) => (sec.owner === 'team' && !sec.shared) || sec.groups.every((g) => g.fields.every((f) => f.owner === 'team' && !f.shared && !f.clientEdit));
 
 // Los grupos de una sección que contienen ciertos campos, para pestañas que enseñan solo una parte (Personas, Horarios).
 export const partOf = (fd, secKey, fieldKeys, title, dental = true) => {
@@ -176,17 +175,47 @@ export async function linksCard(clientId) {
 }
 
 // ───────── Documentos ─────────
-export function docsTab(main, { fd, sections, driveUrl, clientId }) {
-  const u = toUrl(driveUrl);
-  main.append(el('section', { class: 'card', style: 'margin-bottom:14px' }, el('strong', {}, 'Carpeta de Google Drive'),
-    el('p', { class: 'muted', style: 'margin:2px 0 10px' }, 'Contrato, materiales e informes del cliente.'),
-    el('div', { class: 'row' }, u ? el('a', { class: 'btn small', href: u, target: '_blank', rel: 'noopener' }, appIcon('drive'), 'Abrir carpeta ↗') : el('span', { class: 'muted grow' }, 'Todavía no hay carpeta enlazada.'),
-      el('a', { class: 'btn ghost small', href: `#/c/${clientId}/proyecto` }, u ? 'Cambiar' : 'Añadir el enlace'))));
-  main.append(driveFilesNode(() => api('GET', `/api/clients/${clientId}/drive`), { agency: true }));
+export function docsTab(main, { fd, sections, clientId, view }) {
+  const bytes = (n) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1).replace('.', ',')} MB`);
+  const PREV = /^(application\/pdf|image\/(png|jpeg|webp|gif)|text\/plain)$/;
+  const fileUrl = (f, dl) => `/api/clients/${clientId}/files/${f.id}${dl ? '?download=1' : ''}`;
+  const seeFile = (f) => view && view({ nombre: f.name, url: fileUrl(f, true), local: true, embed: PREV.test(f.mime) ? { src: fileUrl(f), kind: f.mime === 'application/pdf' ? 'PDF' : f.mime === 'text/plain' ? 'Texto' : 'Imagen' } : null });
+  // ── Documentos subidos a Space ──
+  const list = el('div', { class: 'plist', style: 'margin-top:10px' });
+  const msg = el('span', { class: 'muted' });
+  const draw = async () => {
+    const { files } = await api('GET', `/api/clients/${clientId}/files`);
+    list.replaceChildren(...(files.length ? files.map((f) => el('div', { class: 'prow' },
+      el('span', { class: 'grow' }, el('strong', {}, f.name), el('small', { class: 'muted', style: 'display:block' }, `${bytes(f.size)} · ${f.uploaded_by || '—'} · ${fmtDate(f.created_at, { dateStyle: 'medium' })}`)),
+      view ? el('button', { class: 'btn small', type: 'button', onclick: () => seeFile(f) }, 'Ver') : '',
+      el('a', { class: 'btn ghost small', href: fileUrl(f, true), download: f.name }, 'Descargar'),
+      el('button', { class: 'btn ghost small', type: 'button', title: 'Quitar', 'aria-label': `Quitar ${f.name}`, onclick: async () => { if (!(await askConfirm(`¿Quitar «${f.name}»?`))) return; await api('DELETE', `/api/clients/${clientId}/files/${f.id}`); draw(); } }, '✕')))
+      : [el('p', { class: 'muted', style: 'margin:0' }, 'Todavía no se ha subido ningún documento.')]));
+  };
+  const upload = async (files) => {
+    for (const f of files) {
+      if (f.size > 15 * 1024 * 1024) { toast(`«${f.name}» pesa más de 15 MB`); continue; }
+      msg.textContent = `Subiendo «${f.name}»…`;
+      try {
+        const r = await fetch(`/api/clients/${clientId}/files?name=${encodeURIComponent(f.name)}&type=${encodeURIComponent(f.type || '')}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Space-Upload': '1' }, body: f });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'No se pudo subir');
+      } catch (e) { toast(e.message); }
+    }
+    msg.textContent = ''; draw();
+  };
+  const input = el('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Elegir documentos', onchange: () => { upload([...input.files]); input.value = ''; } });
+  const drop = el('section', { class: 'card', style: 'margin-bottom:14px' }, el('strong', {}, 'Documentos del cliente'),
+    el('p', { class: 'muted', style: 'margin:2px 0 10px' }, 'Sube aquí el contrato, los materiales o los informes (hasta 15 MB cada uno). Solo los ve el equipo de AVANIA.'),
+    el('div', { class: 'row' }, input, el('button', { class: 'btn small', type: 'button', onclick: () => input.click() }, 'Subir documentos'), msg), list);
+  ['dragover', 'dragenter'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.style.outline = '2px dashed var(--accent, #1d9a8a)'; }));
+  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.style.outline = ''; if (ev === 'drop') upload([...e.dataTransfer.files]); }));
+  main.append(drop);
+  draw().catch((e) => toast(e.message));
   const rows = fd.form.flatMap((s) => s.groups.flatMap((g) => g.fields.filter((f) => f.type === 'docs').map((f) => ({ s, g, items: ((sections[s.key] || {})[f.k] || []).filter((r) => r.url) })))).filter((r) => r.items.length);
   main.append(el('section', { class: 'card' }, el('strong', {}, 'Documentos del alta'),
     rows.length ? el('div', { class: 'plist', style: 'margin-top:8px' }, rows.flatMap((r) => r.items.map((d) => el('div', { class: 'prow' },
       el('span', { class: 'grow' }, el('strong', {}, d.nombre || 'Documento'), el('small', { class: 'muted', style: 'display:block' }, r.g.title.replace(/^[\d.]+\s/, '') + ' · ' + r.s.title)),
+      view ? el('button', { class: 'btn small', type: 'button', onclick: () => view(d) }, 'Ver') : '',
       el('a', { class: 'btn ghost small', href: d.url, target: '_blank', rel: 'noopener' }, 'Abrir ↗')))))
       : el('p', { class: 'muted', style: 'margin:6px 0 0' }, 'Aún no se ha subido ningún documento.')));
 }
@@ -232,6 +261,7 @@ export async function clientUsersTab(main, clientId) {
     box.replaceChildren(
       el('div', { class: 'card', style: 'margin-bottom:14px' }, users.length ? el('div', { class: 'plist' }, users.map((u) => el('div', { class: 'prow' },
         el('span', { class: 'grow' }, el('strong', {}, u.name || u.email), el('small', { class: 'muted', style: 'display:block' }, `${u.email} · ${u.role === 'responsable' ? 'Responsable' : 'Miembro'}${u.pending ? ' · invitación pendiente' : u.last_login ? ` · último acceso ${ago(u.last_login)}` : ''}${u.active ? '' : ' · sin acceso'}`)),
+        mailLink(u.email, u.name || u.email),
         u.pending && u.active ? el('button', { class: 'btn ghost small', onclick: async () => { const r = await api('PATCH', `/api/client-users/${u.id}`, { resend_invite: true }); toast(r.invite === 'sent' ? 'Invitación reenviada' : 'No se pudo enviar: ' + r.invite); } }, 'Reenviar') : '',
         el('button', { class: 'btn ghost small', onclick: async () => { await api('PATCH', `/api/client-users/${u.id}`, { role: u.role === 'responsable' ? 'miembro' : 'responsable' }); draw(); } }, u.role === 'responsable' ? 'Pasar a miembro' : 'Hacer responsable'),
         el('button', { class: 'btn ghost small', onclick: async () => { await api('PATCH', `/api/client-users/${u.id}`, { active: !u.active }); draw(); } }, u.active ? 'Quitar acceso' : 'Dar acceso'),
@@ -282,16 +312,18 @@ export async function vaultView(view, { askCode }) {
     const f = (k, label, type = 'text', extra = {}) => { const id = `vt-${k}`; return el('div', { class: 'grow', style: 'min-width:220px' }, el('label', { for: id }, label), el('input', { id, name: k, type, value: v[k] ?? '', autocomplete: 'off', ...extra })); };
     const notes = el('textarea', { id: 'vt-notes', name: 'notes', rows: 3 }, v.notes || '');
     const err = el('div', { class: 'err', role: 'alert' });
+    const sso = ssoPicker(t?.login_with || []);
     const card = el('form', { class: 'card', style: 'max-width:640px', onsubmit: async (e) => {
       e.preventDefault(); err.textContent = '';
       const b = Object.fromEntries([...new FormData(e.target)].filter(([k, x]) => x !== '' || !['password', 'api_key'].includes(k)));
-      b.notes = notes.value;
+      b.notes = notes.value; b.login_with = sso.value();
       try { const r = await guard(() => (t ? api('PUT', `/api/vault/${t.id}`, b) : api('POST', '/api/vault', b))); d.close(r.tool); } catch (er) { err.textContent = er.message; }
     } }, el('h2', {}, t ? `Editar ${t.name}` : 'Nueva herramienta'),
     el('div', { class: 'row' }, f('name', 'Nombre', 'text', { required: true, 'data-autofocus': '' }), f('category', 'Categoría')),
     el('div', { class: 'row' }, f('purpose', 'Para qué sirve'), f('url', 'Dirección (https://…)', 'url')),
     el('div', { class: 'row' }, f('username', 'Usuario o correo de acceso'), f('used_by', 'Quién la usa')),
     el('div', { class: 'row' }, f('password', t?.has_password ? 'Contraseña (déjala vacía para no cambiarla)' : 'Contraseña', 'password', { autocomplete: 'new-password' }), f('api_key', t?.has_api_key ? 'Clave API (vacía = sin cambios)' : 'Clave API', 'password', { autocomplete: 'new-password' })),
+    el('div', { class: 'ssofield' }, el('span', { class: 'ssol' }, 'Se entra con (no hace falta contraseña)'), sso),
     el('div', { class: 'row' }, f('cost', 'Coste (30 €/mes…)'), f('renewal', 'Renovación', 'date')),
     el('label', { for: 'vt-notes' }, 'Notas'), notes, err,
     el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn ghost', onclick: () => d.close(null) }, 'Cancelar'), el('button', { class: 'btn' }, 'Guardar')));
@@ -305,6 +337,7 @@ export async function vaultView(view, { askCode }) {
     const card = (t) => el('article', { class: 'ficha vtool' },
       el('div', { class: 'top' }, el('span', { class: 'logo', 'aria-hidden': 'true', style: `background:hsl(${hue(t.name)} 45% 40%)` }, t.name[0].toUpperCase()),
         el('div', {}, el('h3', {}, t.name), el('small', {}, [t.category, t.purpose].filter(Boolean).join(' · ') || 'Sin descripción'))),
+      ssoPills(t.login_with) ? el('div', { class: 'row', style: 'gap:6px' }, ssoPills(t.login_with)) : '',
       el('div', { class: 'vmeta' }, t.username ? el('span', {}, el('small', {}, 'Usuario'), t.username) : '', t.used_by ? el('span', {}, el('small', {}, 'Quién la usa'), t.used_by) : '',
         t.cost ? el('span', {}, el('small', {}, 'Coste'), t.cost) : '', t.renewal ? el('span', { class: soon(t.renewal) ? 'soon' : '' }, el('small', {}, 'Renovación'), fmtDate(t.renewal + 'T12:00:00')) : ''),
       t.notes ? el('p', { class: 'muted', style: 'margin:0;white-space:pre-wrap' }, t.notes) : '',
@@ -361,6 +394,7 @@ export function kpisNode(k, clientId = null) {
     el('div', { class: 'stats' },
       tile('Leads (30 días)', nf.format(a.leads), dlt, 'c-leads'), tile('Contactados', pc(a.tasas.contacto), `${nf.format(a.contactado)} de ${nf.format(a.leads)}`, 'c-contact'), tile('Con cita', pc(a.tasas.cita), `${nf.format(a.cita)} leads`, 'c-cita'),
       tile('Asistencia', pc(a.tasas.asistencia), `${nf.format(a.noshow)} no asistieron`, 'c-asist'), tile('Cierre', pc(a.tasas.cierre), 'de los que asisten', 'c-cierre'), tile('De lead a cliente', pc(a.tasas.lead_a_cliente), `${nf.format(a.ganado)} clientes`, 'c-cliente'),
+      k.sin_anuncio != null ? tile('Leads sin anuncio asignado', nf.format(k.sin_anuncio), 'de los últimos 30 días') : '',
       tile('Sin atender hace +24 h', nf.format(k.sin_atender), 'leads nuevos abiertos', k.sin_atender ? 'warnstat' : ''),
       k.facturado ? tile(k.facturado.estimado ? 'Facturación estimada' : 'Facturación', eur(k.facturado.eur), k.facturado.estimado ? `${nf.format(a.ganado)} clientes × valor medio` : 'según Funnels', 'c-money') : '',
       k.coste ? [tile('Coste por lead', eur(k.coste.cpl), 'inversión prevista', 'c-cost'), tile('Coste por cita', eur(k.coste.por_cita), 'inversión prevista', 'c-cost'), tile('Coste por cliente', eur(k.coste.por_cliente), 'inversión prevista', 'c-cost'), k.coste.roas != null ? tile('Retorno', `${String(k.coste.roas).replace('.', ',')}×`, 'facturación ÷ inversión', 'c-roas') : ''] : ''),
@@ -369,24 +403,6 @@ export function kpisNode(k, clientId = null) {
     el('section', { class: 'card rcard', style: 'margin-bottom:14px' }, el('h2', {}, 'Embudo (leads de los últimos 30 días)'), funnel),
     el('div', { class: 'panelgrid' }, table('Campañas', k.campanas), table('Creativos', k.creativos), table('Fuentes', k.fuentes),
       el('section', { class: 'card rcard' }, el('h2', {}, 'Abiertas por etapa'), k.abiertas_por_etapa.length ? el('div', { class: 'plist' }, k.abiertas_por_etapa.slice(0, 12).map((e) => el('div', { class: 'prow' }, el('span', { class: 'grow' }, e.name), el('b', { class: 'num' }, nf.format(e.n))))) : el('p', { class: 'muted', style: 'margin:0' }, 'Sin oportunidades abiertas.'))));
-}
-
-// Leads que Funnels guardó sin campaña o sin anuncio: la agencia los asigna a mano (se guarda solo el identificador del lead).
-function unattributedCard(k, clientId, refresh) {
-  const list = k.sin_atribuir || [];
-  if (!list.length) return '';
-  const known = k.conocidos || { campanas: [], anuncios: [] };
-  const dl = (id, items) => el('datalist', { id }, items.map((v) => el('option', { value: v })));
-  const row = (l) => {
-    const camp = el('input', { list: 'dl-camp', value: l.campana || (known.campanas.length === 1 ? known.campanas[0] : ''), placeholder: 'Campaña', 'aria-label': 'Campaña' });
-    const ad = el('input', { list: 'dl-ad', value: l.anuncio, placeholder: 'Anuncio (p. ej. VD-PRO-05-HUESO)', 'aria-label': 'Anuncio' });
-    const save = async (e) => { e.preventDefault(); try { await api('PUT', `/api/clients/${clientId}/lead-attribution`, { opp_id: l.id, campaign: camp.value, creative: ad.value }); toast('Asignado'); refresh(); } catch (er) { toast(er.message); } };
-    return el('form', { class: 'prow unattr', onsubmit: save },
-      el('span', { class: 'muted ua-meta' }, `${fmtDate(l.creado)} · ${l.fuente || 'sin fuente'}${l.etapa ? ' · ' + l.etapa : ''}`), camp, ad, el('button', { class: 'btn small' }, 'Asignar'));
-  };
-  return el('section', { class: 'card rcard', style: 'margin-bottom:14px' }, el('h2', {}, `Leads sin campaña o anuncio (${list.length})`),
-    el('p', { class: 'muted', style: 'margin:0 0 8px' }, 'Avania Funnels los guardó sin etiquetas. Asígnalos a su campaña y anuncio para que cuenten donde toca; solo se guarda el identificador del lead, nunca sus datos personales.'),
-    dl('dl-camp', known.campanas), dl('dl-ad', known.anuncios), el('div', { class: 'plist' }, list.map(row)));
 }
 
 export async function resultsTab(main, { clientId, me, funnelsLocation }) {
@@ -423,7 +439,6 @@ export async function resultsTab(main, { clientId, me, funnelsLocation }) {
       el('div', { class: 'row', style: 'margin-bottom:10px' }, el('span', { class: 'muted grow' }, `Actualizado ${fmtDate(r.kpis.generated_at, { dateStyle: 'short', timeStyle: 'short' })} · se refresca solo cada 15 minutos`),
         el('button', { class: 'btn ghost small', onclick: () => draw(true) }, 'Actualizar'), admin ? el('button', { class: 'btn ghost small', onclick: connect }, 'Cambiar el token') : '',
         admin ? el('button', { class: 'btn ghost small danger', onclick: async () => { if (!(await askConfirm({ title: 'Desconectar Avania Funnels', text: 'Se borra el token guardado. Los KPIs dejarán de verse hasta volver a conectar.', ok: 'Desconectar', danger: true }))) return; try { try { await api('DELETE', `/api/clients/${clientId}/funnels`); } catch (e) { if (e.code === 'password_required' && await reauth()) await api('DELETE', `/api/clients/${clientId}/funnels`); else throw e; } draw(); } catch (e) { toast(e.message); } } }, 'Desconectar') : ''),
-      unattributedCard(r.kpis, clientId, () => draw(true)),
       kpisNode(r.kpis, clientId));
   }
   await draw();
@@ -457,4 +472,71 @@ export async function pipelineTools(clientId, { pipelineId, onLoaded }) {
   box.append(el('strong', {}, 'Pipeline principal'), el('p', { class: 'muted', style: 'margin:2px 0 10px' }, `Esta subcuenta tiene ${pipes.length} pipelines: elige el que usa la campaña y se cargan sus etapas al momento. Lo que ya hubieras indicado de cada etapa se conserva.`),
     el('div', { class: 'row' }, sel, known ? el('button', { class: 'btn ghost small', onclick: () => load(pipelineId) }, 'Recargar etapas') : ''));
   return box;
+}
+
+// ───────── Mapa y estudio sociodemográfico de la zona (La empresa → Área de influencia) ─────────
+const LEAFLET = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/';
+let leafletReady = null;
+const loadLeaflet = () => leafletReady || (leafletReady = new Promise((ok, ko) => {
+  const css = el('link', { rel: 'stylesheet', href: LEAFLET + 'leaflet.min.css' }), js = el('script', { src: LEAFLET + 'leaflet.min.js' });
+  js.onload = () => ok(window.L); js.onerror = () => { leafletReady = null; ko(new Error('No se pudo cargar el mapa')); };
+  document.head.append(css, js);
+}));
+const nfz = (n, d = 0) => (n == null ? '—' : Number(n).toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d, useGrouping: 'always' }));
+const COLS = [['Población', 'poblacion', 0], ['Edad media', 'edad_media', 1], ['< 18 años (%)', 'menores18', 1], ['≥ 65 años (%)', 'mayores65', 1], ['Personas por hogar', 'hogar', 1], ['Hogares de 1 persona (%)', 'unipersonales', 1], ['Renta neta por persona (€)', 'renta_persona', 0], ['Renta neta por hogar (€)', 'renta_hogar', 0], ['Población española (%)', 'espanola', 1]];
+
+function zonaReading(z) {
+  const t = z.total; if (!t) return null;
+  const ok = z.places.filter((p) => p.data);
+  const best = [...ok].sort((a, b) => b.data.renta_persona - a.data.renta_persona);
+  const big = [...ok].sort((a, b) => b.data.poblacion - a.data.poblacion);
+  const young = [...ok].sort((a, b) => a.data.edad_media - b.data.edad_media)[0];
+  const out = [`En total, ${nfz(t.poblacion)} habitantes en ${t.municipios} municipio${t.municipios === 1 ? '' : 's'}; edad media ${nfz(t.edad_media, 1)} años y renta neta media de ${nfz(t.renta_persona)} € por persona (${nfz(t.renta_hogar)} € por hogar).`];
+  if (ok.length > 1) {
+    out.push(`El mayor mercado es ${big[0].data.nombre} (${nfz(big[0].data.poblacion)} habitantes, un ${nfz(big[0].data.poblacion / t.poblacion * 100)} % de la zona). La renta más alta es la de ${best[0].data.nombre} (${nfz(best[0].data.renta_persona)} €) y la más baja la de ${best[best.length - 1].data.nombre} (${nfz(best[best.length - 1].data.renta_persona)} €).`);
+    out.push(`La población más joven está en ${young.data.nombre} (${nfz(young.data.edad_media, 1)} años de media, ${nfz(young.data.menores18, 1)} % de menores de 18).`);
+  }
+  if (t.mayores65 != null) out.push(`El ${nfz(t.mayores65, 1)} % de la zona tiene 65 años o más y el ${nfz(t.menores18, 1)} % es menor de 18; el hogar medio es de ${nfz(t.hogar, 1)} personas.`);
+  return out;
+}
+
+export function zonaCard(main, clientId, { url = null, title = 'Mapa y estudio de la zona' } = {}) {
+  const body = el('div'), card = el('section', { class: 'cgroup', style: 'margin-top:18px' }, el('h2', { style: 'margin:0 0 10px;font-size:18px' }, title), body);
+  const run = async () => {
+    body.replaceChildren(el('p', { class: 'muted' }, 'Situando las localidades y consultando los datos del INE… la primera vez tarda unos segundos.'));
+    try {
+      const [z, L] = await Promise.all([api('GET', url || `/api/clients/${clientId}/zona`), loadLeaflet()]);
+      if (z.empty) return body.replaceChildren(el('p', { class: 'muted' }, 'Rellena la dirección y la ciudad en Datos, y las localidades aquí arriba, para ver el mapa.'));
+      const map = el('div', { style: 'height:380px;border-radius:12px;overflow:hidden;border:1px solid var(--line, #ddd)' });
+      const reading = zonaReading(z), found = z.places.filter((p) => p.found), missing = z.places.filter((p) => !p.found);
+      const note = (p) => (!p.found ? 'No encontrada' : p.data ? '' : 'Sin dato municipal del INE');
+      const head = ['Localidad', ...COLS.map((c) => c[0])];
+      const rows = found.map((p) => [p.query + (p.data && p.data.nombre !== p.query ? ` (${p.data.nombre})` : ''), ...COLS.map(([, k, d]) => (p.data ? nfz(p.data[k], d) : note(p)))]);
+      if (z.total) rows.push(['Total / media ponderada', ...COLS.map(([, k, d]) => nfz(z.total[k], d))]);
+      body.replaceChildren(map,
+        el('p', { class: 'muted', style: 'margin:8px 0' }, 'Chincheta azul con edificio: la empresa. Puntos verdes: localidades. El círculo es el radio de captación' + (z.radius_km ? ` (${z.radius_km} km).` : ' (sin radio indicado).') + ''),
+        ...(z.center ? [el('p', { style: 'margin:0 0 8px;font-size:13px;' + (z.center.precision === 'portal' ? '' : 'color:#b45309') },
+          !z.center.found ? 'No se ha podido situar la dirección de la empresa: revisa la dirección y la ciudad en Datos.'
+          : z.center.precision === 'portal' ? `Chincheta en el portal exacto: ${z.center.label}.`
+          : z.center.precision === 'calle' ? `La dirección se ha situado en la calle, no en el número exacto (${z.center.label}). Revisa que esté bien escrita en Datos.`
+          : 'No se ha localizado la calle y el número: la chincheta de la empresa está en el centro de la ciudad. Revisa la dirección en Datos.')] : []),
+        ...(missing.length ? [el('p', { class: 'muted' }, `No se han podido situar: ${missing.map((p) => p.query).join(', ')}. Revisa cómo están escritas.`)] : []),
+        ...(z.skipped ? [el('p', { class: 'muted' }, `Solo se estudian las ${z.places.length} primeras localidades (${z.skipped} más sin estudiar).`)] : []),
+        reading ? el('section', { class: 'card', style: 'margin:12px 0' }, el('h3', { style: 'margin:0 0 6px' }, 'Lectura de la zona'), ...reading.map((t) => el('p', { style: 'margin:4px 0' }, t))) : '',
+        rows.length ? el('div', { class: 'card', style: 'overflow-x:auto;padding:6px 10px;border-radius:14px;background:#fff' }, el('table', { class: 't', style: 'min-width:720px' }, el('thead', {}, el('tr', {}, head.map((h) => el('th', {}, h)))), el('tbody', {}, rows.map((r, i) => el('tr', { style: z.total && i === rows.length - 1 ? 'font-weight:600' : '' }, r.map((c, j) => el('td', { style: j ? 'text-align:right' : '' }, c))))))) : '',
+        el('p', { class: 'muted', style: 'margin-top:8px;font-size:12px' }, `Fuente: INE, Atlas de distribución de renta de los hogares${z.total ? ` (datos de ${Math.max(...z.places.filter((p) => p.data).map((p) => p.data.anyo))}, del municipio entero; un barrio o pedanía se muestra con los datos de su municipio)` : ''}. Mapa: © OpenStreetMap.`));
+      const m = L.map(map, { scrollWheelZoom: false }), pts = [];
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap', referrerPolicy: 'origin' }).addTo(m);
+      const pin = (p, color, label) => { const mk = L.circleMarker([p.lat, p.lon], { radius: 9, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }).addTo(m); mk.bindTooltip(label, { permanent: found.length <= 4, direction: 'top' }); pts.push([p.lat, p.lon]); };
+      if (z.center?.found) {
+        const svg = '<svg width="40" height="52" viewBox="0 0 40 52" xmlns="http://www.w3.org/2000/svg"><path d="M20 51C20 51 3 31 3 19a17 17 0 0 1 34 0c0 12-17 32-17 32z" fill="#1d4ed8" stroke="#fff" stroke-width="2.500"/><g fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><path d="M12 28V14h10v14M22 19h6v9M9 28h22"/></g><path d="M15 17.500h4M15 21.500h4M15 25h4M24.500 22.500h1.500M24.500 25.500h1.500" stroke="#fff" stroke-width="1.700"/></svg>';
+        const mk = L.marker([z.center.lat, z.center.lon], { icon: L.divIcon({ html: svg, className: '', iconSize: [40, 52], iconAnchor: [20, 51], tooltipAnchor: [0, -46] }), zIndexOffset: 1000 }).addTo(m);
+        mk.bindTooltip('La empresa', { direction: 'top' }); pts.push([z.center.lat, z.center.lon]); if (z.radius_km) { const c = L.circle([z.center.lat, z.center.lon], { radius: z.radius_km * 1000, color: '#2563eb', weight: 1, fillOpacity: .06 }).addTo(m); pts.push(...[[1, 0], [-1, 0], [0, 1], [0, -1]].map(([a, b]) => [z.center.lat + a * z.radius_km / 111, z.center.lon + b * z.radius_km / 85])); } }
+      found.forEach((p) => pin(p, '#1d9a8a', p.query));
+      pts.length ? m.fitBounds(pts, { padding: [30, 30], maxZoom: 13 }) : m.setView([40.4, -3.7], 6);
+      setTimeout(() => m.invalidateSize(), 50);
+    } catch (e) { body.replaceChildren(el('p', { class: 'muted' }, e.message), el('button', { class: 'btn ghost small', onclick: run }, 'Reintentar')); }
+  };
+  run();
+  main.append(card);
 }

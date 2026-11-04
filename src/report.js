@@ -21,7 +21,7 @@ function highlights(S, creds) {
       line('Empresa', [g('clinica', 'nombre_comercial'), g('clinica', 'ciudad')].filter(has).join(' · ')),
       line('Apertura', g('clinica', 'fecha_apertura') && fecha(g('clinica', 'fecha_apertura'))),
       line('Teléfono', g('clinica', 'telefono')), line('Web', g('clinica', 'web')),
-      people(g('clinica', 'responsables')).length ? `Responsables: ${people(g('clinica', 'responsables')).join(' | ')}` : null,
+      people(g('clinica', 'responsables')).length ? `Equipo: ${people(g('clinica', 'responsables')).join(' | ')}` : null,
       line('Horario', Object.values(g('agenda', 'horario') || {}).some((d) => d?.abre) ? 'indicado' : null),
       line('Logotipos', rowsOf(g('materiales', 'logos'), ['url']).length ? `${rowsOf(g('materiales', 'logos'), ['url']).length} enlace(s)` : null),
     ],
@@ -36,7 +36,7 @@ function highlights(S, creds) {
     tecnico: [
       line('Dominio', g('accesos', 'dominio')), line('Google', g('accesos', 'google_alta')),
       line('Business Manager', g('meta', 'bm_acceso') ? `acceso concedido: ${g('meta', 'bm_acceso')}` : null), line('Píxel', g('meta', 'pixel')),
-      line('Instagram', g('meta', 'perfil_ig')), line('WhatsApp de pacientes', g('whatsapp', 'wa_numero') || (g('whatsapp', 'wa_nuevo') === 'Sí' ? 'número nuevo gestionado por AVANIA' : null)),
+      line('Instagram', g('meta', 'perfil_ig')), line('WhatsApp de clientes', g('whatsapp', 'wa_numero') || (g('whatsapp', 'wa_nuevo') === 'Sí' ? 'número nuevo gestionado por AVANIA' : null)),
       line('Avania Setex', g('whatsapp', 'setex_numero')),
       creds.length ? `Bóveda: ${creds.length} servicio(s), ${creds.length - pend.length} con contraseña recibida${pend.length ? `; sin contraseña: ${pend.join(', ')}` : ''}` : 'Bóveda: ningún servicio todavía',
     ],

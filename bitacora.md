@@ -591,3 +591,6 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 
 ## 5-nov — Fichas de análisis: el error del resumen se queda a la vista
 - «Elegir archivo» / «Resumir de nuevo» no escribía nada porque **Space no tiene `ANTHROPIC_API_KEY` en su `.env`** (el error está en el log desde que se creó la función). El aviso salía solo unos segundos; ahora el motivo queda escrito en rojo dentro de la ficha. Para que funcione hay que poner la clave de IA de Space en `.env` y reiniciar `avania-space`. Las «conclusiones» de cada pestaña siguen siendo texto a mano: no se rellenan solas a partir de los resúmenes (pendiente de decidir).
+
+## 5-nov — Clave de IA de Space
+- Con permiso de Pascual se copió la clave de Anthropic de AVANIA (la misma que usa Setter) al `.env` de Space (`ANTHROPIC_API_KEY`; `.env` sigue fuera de git, permisos 600; copia previa en `/root/backups/space.env.bak-20261105`). Reiniciado `avania-space`. Probado con un texto de ejemplo: el resumen se escribe bien. Comparte facturación y límites con Setter.

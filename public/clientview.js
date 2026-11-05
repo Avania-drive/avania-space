@@ -26,6 +26,9 @@ export function taskList(tasks, { href, empty = 'Nada pendiente.', limit = 8 } =
   tasks.length > shown.length ? el('div', { class: 'srow more muted' }, `y ${tasks.length - shown.length} más`) : '']);
 }
 
+// Papelera pequeña (SVG en línea) para eliminar.
+const trash = () => { const i = el('span', { class: 'trash', 'aria-hidden': 'true' }); i.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v6M14 10v6"/></svg>'; return i; };
+
 /** Las tareas del proyecto (antes «fases»): cada una con su responsable del equipo, inicio, fin y subtareas. Con `edit.save(cambios)` la agencia las cambia; `team` = personas a las que asignarlas. */
 export function phasesNode(fases, { edit = null, viewer = 'agencia', team = [] } = {}) {
   const box = el('div', { class: 'phases' });
@@ -49,7 +52,7 @@ export function phasesNode(fases, { edit = null, viewer = 'agencia', team = [] }
       el('label', { class: 'phd' }, el('small', {}, 'Fin'), dateIn(f, 'fecha', 'Fecha de finalización'))),
     el('span', { class: 'phtools' }, ...(extra || []), el('button', { type: 'button', class: 'phdel', title: 'Eliminar', 'aria-label': `Eliminar: ${f.fase}`, onclick: async () => {
       if (await askConfirm({ title: 'Eliminar', text: `¿Eliminar «${f.fase}»${(f.sub || []).length ? ` y sus ${f.sub.length} subtareas` : ''}? No se puede deshacer.`, ok: 'Eliminar', danger: true })) remove();
-    } }, '✕'))];
+    } }, trash()))];
   const addSub = (f, i) => {
     const name = el('input', { placeholder: 'Nueva subtarea…', 'aria-label': 'Nueva subtarea', style: 'flex:1;min-width:160px' });
     return el('form', { class: 'row phsubadd', onsubmit: (e) => { e.preventDefault(); if (!name.value.trim()) return; (f.sub ||= []).push({ fase: name.value.trim(), quien: f.quien, estado: 'Pendiente', responsable: f.responsable || '', inicio: '', fecha: '', nota: '' }); open.add(i); save(); } }, name, el('button', { class: 'btn small' }, '+ Subtarea'));

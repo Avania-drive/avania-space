@@ -945,6 +945,7 @@ select.stsel.st-hecho { background-color: #d1fae5; color: #047857; border-color:
   .phases-list .phtools .btn.small { padding: 4px 9px; min-width: 32px; }
 }
 
-/* Eliminar tarea o subtarea: cruz blanca en círculo rojo */
-.phdel { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: #dc2626; color: #fff; font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer; display: inline-grid; place-items: center; flex: none; }
-.phdel:hover { background: #b91c1c; } .phdel:focus-visible { outline: 3px solid rgba(220,38,38,.35); outline-offset: 2px; }
+/* Eliminar tarea o subtarea: papelera pequeña, roja al pasar el ratón */
+.phdel { width: 26px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: none; color: #dc2626; cursor: pointer; display: inline-grid; place-items: center; flex: none; }
+.phdel:hover { background: #fee2e2; border-color: #fecaca; } .phdel:focus-visible { outline: 3px solid rgba(220,38,38,.35); outline-offset: 1px; }
+.phdel .trash { display: grid; }

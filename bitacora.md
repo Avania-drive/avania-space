@@ -585,3 +585,6 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 
 ## 5-nov — Elegir archivo de Drive: ventana más ancha
 - La ventana «Elegir archivo de Google Drive» (fichas de Avatares, Competencia y Ofertas) pasa de 640 px a 980 px de ancho (94 % de la pantalla en móvil) y la lista es más alta (62 % de la pantalla), para ver bien los nombres de los documentos y su carpeta.
+
+## 5-nov — Tareas: papelera pequeña en lugar de la cruz roja
+- El botón de eliminar tarea y subtarea es ahora una **papelera pequeña** (15 px, en rojo; con fondo rosado al pasar el ratón) en lugar del círculo rojo con cruz. Mantiene la confirmación antes de borrar.

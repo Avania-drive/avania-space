@@ -1,4 +1,4 @@
-import { DATE_ATTRS, el, api, toast, renderSection, renderCredentials, helpBlock, helpButton, toUrl, appIcon, appName, openModal, askText, askConfirm, notice, fmtDate } from './fields.js';
+import { DATE_ATTRS, el, api, toast, renderSection, renderCredentials, helpBlock, helpButton, toUrl, appIcon, appName, openModal, askText, askConfirm, askPhrase, notice, fmtDate } from './fields.js';
 import { embedUrl } from './preview.js';
 import { homeNodes, docsNodes, areasNodes, taskColumns, timelineNode, phasesNode, bar, driveFilesNode } from './clientview.js';
 import { kpisNode, scopeForm, partOf, panelView, configView, notesTab, linksCard, docsTab, lastChange, avatar, logoButton, clientUsersTab, vaultView, resultsTab, pipelineTools, agencyOnly, zonaCard } from './extra.js';
@@ -310,15 +310,27 @@ async function clientsView() {
   const cats = [...new Map(clients.filter((c) => c.category).map((c) => [c.category, c.category_color])).entries()].sort((a, b) => a[0].localeCompare(b[0], 'es'));
   const tbody = el('tbody'), board = el('div', { class: 'board' });
   const tableWrap = el('div', { class: 'scroll' }, el('table', { class: 't click' },
-    el('thead', {}, el('tr', {}, ['Cliente', 'Categoría', 'Ciudad', 'Responsable', 'Estado', 'Onboarding', 'Credenciales', 'Inicio'].map((h) => el('th', { class: h === 'Categoría' ? 'r' : '' }, h)))), tbody));
+    el('thead', {}, el('tr', {}, ['Cliente', 'Categoría', 'Ciudad', 'Responsable', 'Estado', 'Onboarding', 'Credenciales', 'Inicio', ''].map((h) => el('th', { class: h === 'Categoría' ? 'r' : '' }, h)))), tbody));
   const nWaiting = clients.filter((c) => !c.archived && launching(c) && missingOf(c).length).length;
   const lead = el('p', { class: 'lead' }, nWaiting ? `Hoy hay ${nWaiting} cliente${nWaiting > 1 ? 's' : ''} esperando datos suyos.` : 'No hay clientes esperando datos.');
+  const canBaja = me.role === 'super_admin' || me.role === 'admin';
+  // Baja del cliente (solo en el panel de clientes): pide escribir «dar de baja». Archiva; no borra nada y se puede reactivar.
+  const bajaBtn = (c, cls = 'btn ghost small') => el('button', { type: 'button', class: cls, title: c.archived ? 'Volver a dar de alta' : 'Dar de baja a este cliente',
+    onclick: async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const a = !c.archived;
+      const okk = a ? await askPhrase({ title: `Dar de baja a «${c.name}»`, text: 'Dejará de salir en la lista y su enlace dejará de funcionar. No se borra nada: podrás reactivarlo marcando «Archivados».', phrase: 'dar de baja', ok: 'Dar de baja' })
+        : await askConfirm({ title: `Reactivar a «${c.name}»`, ok: 'Reactivar' });
+      if (!okk) return;
+      await api('PATCH', `/api/clients/${c.id}`, { archived: a }); toast(a ? 'Cliente dado de baja' : 'Cliente reactivado'); route();
+    } }, c.archived ? 'Reactivar' : 'Dar de baja');
   const crow = (c) => el('a', { class: 'crow', href: `#/c/${c.id}` },
     el('span', { class: 'name' }, el('strong', {}, c.name), c.archived ? el('span', { class: 'pill' }, 'archivado') : '', c.status === 'activa' ? el('small', { class: 'muted' }, 'Campaña activa') : c.status === 'pausada' ? el('small', { class: 'muted' }, 'Pausada') : ''),
     gatesBar(c.gates),
     el('span', { class: 'when', title: 'Última actividad en la ficha' }, ago(c.last_activity)),
     el('span', { class: 'who' }, c.account_manager || '—'),
-    el('span', { class: 'cat' }, catPill(c.category, c.category_color)));
+    el('span', { class: 'cat' }, catPill(c.category, c.category_color)),
+    canBaja ? bajaBtn(c) : '');
   const folds = { 'En campaña': true };   // los grupos plegables: «En campaña» sale desplegado y se recuerda lo que se abra o cierre
   const group = (title, list, fold) => !list.length ? '' : fold
     ? el('details', { class: 'cgroup', open: folds[title] === true, ontoggle: (e) => { folds[title] = e.target.open; } }, el('summary', {}, `${title} (${list.length})`), el('div', { class: 'clist' }, list.map(crow)))
@@ -327,7 +339,8 @@ async function clientsView() {
     el('div', { class: 'top' }, avatar(c),
       el('div', {}, el('h3', {}, c.name), el('small', {}, c.city || 'Sin ciudad'))),
     el('div', { class: 'row' }, catPill(c.category, c.category_color), el('span', { class: 'pill' }, STATUS[c.status]), c.archived ? el('span', { class: 'pill' }, 'archivado') : ''),
-    el('div', { class: 'foot' }, el('div', { class: 'bar', style: 'flex:1' }, el('i', { style: `width:${c.progress}%` })), el('span', { class: 'num' }, `${c.progress}% alta`)));
+    el('div', { class: 'foot' }, el('div', { class: 'bar', style: 'flex:1' }, el('i', { style: `width:${c.progress}%` })), el('span', { class: 'num' }, `${c.progress}% alta`)),
+    canBaja ? el('div', { class: 'row end' }, bajaBtn(c)) : '');
   const draw = () => {
     sync();
     const rows = clients.filter((c) => (showArch || !c.archived) && (!st || c.status === st) && (!cat || c.category === cat)
@@ -344,8 +357,9 @@ async function clientsView() {
         el('td', {}, el('span', { class: 'pill' }, STATUS[c.status])),
         el('td', {}, el('div', { class: 'row' }, el('div', { class: 'bar', style: 'width:90px' }, el('i', { style: `width:${c.progress}%` })), el('span', { class: 'num' }, `${c.progress}%`))),
         el('td', {}, credPills(c.credentials)),
-        el('td', {}, c.start_date ? fmtDate(c.start_date.slice(0, 10) + 'T12:00:00') : '—'))));
-      if (!rows.length) tbody.append(el('tr', {}, el('td', { colspan: 8, class: 'muted' }, 'No hay clientes con ese filtro.')));
+        el('td', {}, c.start_date ? fmtDate(c.start_date.slice(0, 10) + 'T12:00:00') : '—'),
+        el('td', {}, canBaja ? bajaBtn(c) : ''))));
+      if (!rows.length) tbody.append(el('tr', {}, el('td', { colspan: 9, class: 'muted' }, 'No hay clientes con ese filtro.')));
       return;
     }
     const byStale = (a, b) => new Date(a.last_activity) - new Date(b.last_activity);
@@ -542,7 +556,7 @@ async function clientView(id, tab) {
     main.append(col);
   } else if (t.sec && !['accesos', 'meta'].includes(t.key)) {   // Web y Google y Meta se abren en la zona protegida
     const data = sections[t.key] || (sections[t.key] = {});
-    const hasDocs = t.sec.groups.some((g) => g.fields.some((f) => f.type === 'docs'));
+    const hasDocs = t.sec.groups.some((g) => g.fields.some((f) => f.type === 'docs' || f.type === 'fichas'));
     const pv = hasDocs ? previewPane() : null;
     // Con la subcuenta conectada el pipeline se detecta solo (o se elige de una lista si hay varios): el campo de ID sobra.
     let secDef = t.sec;
@@ -563,7 +577,7 @@ async function clientView(id, tab) {
       }
       return r;
     };
-    main.append(renderSection(secDef, data, { team: true, clientName: client.name, save: saveSec, preview: pv && pv.show }));
+    main.append(renderSection(secDef, data, { team: true, clientName: client.name, clientId: id, save: saveSec, preview: pv && pv.show }));
     if (t.key === 'zona') zonaCard(main, id);
 
   } else if (['accesos', 'meta', 'credenciales'].includes(t.key)) {

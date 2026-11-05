@@ -91,6 +91,51 @@ export function openModal(card, { label, onClose, cls = '' } = {}) {
   (card.querySelector('[data-autofocus]') || tabbables()[0] || card).focus();
   return { close, el: m };
 }
+const tabMemo = {};
+const ANALIZABLE = new Set(['documento', 'hoja', 'presentación', 'pdf']);
+/** Explorador de la carpeta de Drive del cliente para elegir un archivo. Devuelve { id, name, kind, url, folder, modified } o null. */
+function pickDriveFile(clientId) {
+  return new Promise(async (resolve) => {
+    const list = el('div', { class: 'pk-list' }, el('p', { class: 'muted' }, 'Leyendo la carpeta de Google Drive…'));
+    const search = el('input', { type: 'search', class: 'dsearch', placeholder: 'Buscar archivo…', 'aria-label': 'Buscar archivo', autocomplete: 'off', 'data-autofocus': '' });
+    const card = el('div', { class: 'card pk' }, el('h2', {}, 'Elegir archivo de Google Drive'),
+      el('p', { class: 'muted' }, 'Archivos de la carpeta del cliente. Space puede leer Documentos, Hojas y Presentaciones de Google y PDF.'), search, list,
+      el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn ghost', onclick: () => d.close(null) }, 'Cancelar')));
+    const d = openModal(card, { label: 'Elegir archivo de Google Drive', onClose: (v) => resolve(v ?? null) });
+    let all = [];
+    const draw = () => {
+      const q = search.value.trim().toLowerCase();
+      const rows = all.filter((f) => !q || `${f.name} ${f.folder}`.toLowerCase().includes(q));
+      list.replaceChildren(...(rows.length ? rows.map((f) => {
+        const ok = ANALIZABLE.has(f.kind);
+        return el('button', { type: 'button', class: 'pk-row', disabled: !ok, title: ok ? '' : 'Space no puede leer este tipo de archivo', onclick: () => d.close(f) },
+          el('span', { class: 'pk-kind' }, f.kind), el('span', { class: 'grow' }, el('strong', {}, f.name), el('small', { class: 'muted', style: 'display:block' }, f.folder)),
+          f.modified ? el('small', { class: 'muted' }, fmtDate(f.modified, { dateStyle: 'short' })) : '');
+      }) : [el('p', { class: 'muted' }, all.length ? 'Ningún archivo coincide.' : 'No hay archivos en la carpeta.')]));
+    };
+    search.oninput = draw;
+    try {
+      const r = await api('GET', `/api/clients/${clientId}/drive`);
+      if (r.state !== 'ok') { list.replaceChildren(el('p', { class: 'muted' }, r.state === 'sin_carpeta' ? 'Falta enlazar la carpeta de Drive del cliente (Nosotros › Proyecto).' : r.state === 'sin_google' ? 'Space aún no está conectado a Google Drive.' : (r.message || 'No se pudo leer la carpeta de Drive.'))); return; }
+      const walk = (n, path) => { n.files.forEach((f) => all.push({ ...f, folder: path })); n.folders.forEach((c) => walk(c, `${path} › ${c.name}`)); };
+      walk(r.tree, r.tree.name); all.sort((a, b) => String(b.modified || '').localeCompare(String(a.modified || ''))); draw();
+    } catch (e) { list.replaceChildren(el('p', { class: 'muted' }, e.message)); }
+  });
+}
+/** Ventana de confirmación: ¿es este el archivo que se quiere incluir? */
+function confirmDriveFile(file) {
+  return new Promise((resolve) => {
+    const card = el('div', { class: 'card' }, el('h2', {}, '¿Es este el archivo?'),
+      el('div', { class: 'pk-file' }, el('span', { class: 'pk-kind' }, file.kind), el('div', {}, el('strong', {}, file.name), el('small', { class: 'muted', style: 'display:block' }, file.folder), file.modified ? el('small', { class: 'muted', style: 'display:block' }, `Modificado ${fmtDate(file.modified, { dateStyle: 'medium' })}`) : '')),
+      file.url ? el('p', {}, el('a', { href: file.url, target: '_blank', rel: 'noopener' }, 'Abrirlo en Drive para comprobarlo ↗')) : '',
+      el('p', { class: 'muted' }, 'Si lo confirmas, Space leerá el archivo, escribirá un resumen y lo guardará en esta ficha. El resumen lo podrás corregir.'),
+      el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn ghost', onclick: () => d.close(false) }, 'No, elegir otro'),
+        el('button', { type: 'button', class: 'btn', 'data-autofocus': '', onclick: () => d.close(true) }, 'Sí, usar este archivo')));
+    const d = openModal(card, { label: '¿Es este el archivo?', onClose: (v) => resolve(v === true) });
+  });
+}
+let ctxClient = null;
+const working = new WeakSet();
 export function askText({ title, label, value = '', placeholder = '', hint = '', ok = 'Aceptar' }) {
   return new Promise((resolve) => {
     const id = `ask-${++uid}`;
@@ -106,6 +151,20 @@ export function askConfirm({ title, text = '', ok = 'Aceptar', danger = false })
     const card = el('div', { class: 'card' }, el('h2', {}, title), text ? el('p', { class: 'muted' }, text) : '',
       el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn ghost', 'data-autofocus': '', onclick: () => d.close(false) }, 'Cancelar'),
         el('button', { type: 'button', class: 'btn' + (danger ? ' danger' : ''), onclick: () => d.close(true) }, ok)));
+    const d = openModal(card, { label: title, onClose: (v) => resolve(v === true) });
+  });
+}
+// Confirmación fuerte: hay que escribir la frase exacta (sin importar mayúsculas) para que se active el botón.
+export function askPhrase({ title, text = '', phrase, ok = 'Confirmar', danger = true }) {
+  return new Promise((resolve) => {
+    const id = `ask-${++uid}`;
+    const good = () => inp.value.trim().toLowerCase() === phrase.toLowerCase();
+    const inp = el('input', { id, name: 'confirmacion', autocomplete: 'off', spellcheck: false, 'data-autofocus': '', oninput: () => { btn.disabled = !good(); } });
+    const btn = el('button', { class: 'btn' + (danger ? ' danger' : ''), disabled: true }, ok);
+    const card = el('form', { class: 'card', onsubmit: (e) => { e.preventDefault(); if (good()) d.close(true); } },
+      el('h2', {}, title), text ? el('p', { class: 'muted' }, text) : '',
+      el('label', { for: id }, ['Para confirmar, escribe ', el('strong', {}, phrase)]), inp,
+      el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn ghost', onclick: () => d.close(false) }, 'Cancelar'), btn));
     const d = openModal(card, { label: title, onClose: (v) => resolve(v === true) });
   });
 }
@@ -182,8 +241,8 @@ function groupIcon(title, i) {
 
 let searchName = '';
 let watchers = [];
-export function renderSection(sec, data, { team, save, preview, clientName }) {
-  searchName = clientName || ''; watchers = [];
+export function renderSection(sec, data, { team, save, preview, clientName, clientId }) {
+  searchName = clientName || ''; ctxClient = clientId || null; watchers = [];
   const wrap = el('div');
   const status = el('div', { class: 'saved', role: 'status', 'aria-live': 'polite' });
   let pending = {}, timer = null;
@@ -225,7 +284,7 @@ export function renderSection(sec, data, { team, save, preview, clientName }) {
   const secAgency = sec.groups.flatMap((g) => g.fields).every((f) => f.owner === 'team');
   sec.groups.forEach((g, i) => {
     if (!team && g.fields.every(hiddenFromClient)) return;
-    const wide = g.fields.some((f) => ['table', 'horario', 'docs', 'calendario'].includes(f.type)) || g.fields.length > 7;
+    const wide = g.fields.some((f) => ['table', 'horario', 'docs', 'fichas', 'calendario'].includes(f.type)) || g.fields.length > 7;
     const body = el('div', { class: 'gfields' });
     for (const f of g.fields) {
       if (!team && hiddenFromClient(f)) continue;
@@ -236,10 +295,10 @@ export function renderSection(sec, data, { team, save, preview, clientName }) {
         node.dataset.scope = agency ? 'agency' : 'client';
         if (f.owner === 'team' && !secAgency) node.querySelector('label')?.append(el('span', { class: 'scope-tag' }, f.clientEdit ? 'Lo ve y lo edita también el cliente' : f.shared ? 'Lo rellena la agencia · lo ve el cliente' : 'Solo agencia'));
       }
-      const big = ['table', 'horario', 'docs', 'calendario'].includes(f.type);
+      const big = ['table', 'horario', 'docs', 'fichas', 'calendario'].includes(f.type);
       node.classList.add('w' + (f.w || (big || f.search ? 12 : 6)));
       if (f.calside) node.classList.add('calside'); if (f.side) node.classList.add('side');
-      if (f.owner !== 'team' && !['table', 'horario', 'docs', 'calendario', 'check'].includes(f.type) && node.lastElementChild) {
+      if (f.owner !== 'team' && !['table', 'horario', 'docs', 'fichas', 'calendario', 'check'].includes(f.type) && node.lastElementChild) {
         const ctl = node.lastElementChild, box = el('div', { class: 'fctl' });
         ctl.replaceWith(box); box.append(ctl, delegateControl(f, node));
       }
@@ -249,6 +308,18 @@ export function renderSection(sec, data, { team, save, preview, clientName }) {
       el('header', { class: 'ghead' }, groupIcon(g.title, i), el('h2', {}, g.title.replace(/^\d+(\.\d+)?\s+/, ''))),
       g.intro ? el('div', { class: 'gintro' }, [].concat(g.intro).map((t) => el('p', {}, t))) : '', body));
   });
+  // Secciones con pestañas (p. ej. Análisis de AVANIA): cada grupo es una pestaña y solo se ve una tarjeta a la vez.
+  if (sec.tabs && grid.children.length > 1) {
+    const cards = [...grid.children], names = sec.groups.filter((g) => team || !g.fields.every(hiddenFromClient)).map((g) => g.tab || g.title);
+    let cur = Math.max(0, names.indexOf(tabMemo[sec.key]));
+    const bar = el('div', { class: 'seg stabs', role: 'tablist' });
+    const show = (n) => { cur = n; tabMemo[sec.key] = names[n]; cards.forEach((c, i) => { c.hidden = i !== n; c.classList.add('wide'); }); [...bar.children].forEach((b, i) => { b.classList.toggle('on', i === n); b.setAttribute('aria-selected', String(i === n)); }); };
+    names.forEach((t, i) => bar.append(el('button', { type: 'button', role: 'tab', onclick: () => show(i) }, t)));
+    wrap.append(bar); show(cur);
+    wrap.append(grid); wrap.append(status);
+    window.addEventListener('beforeunload', () => { if (Object.keys(pending).length) flush(); }, { once: true });
+    return wrap;
+  }
   // Si queda una tarjeta sola en su fila, ocupa todo el ancho.
   const half = [...grid.children].filter((c) => !c.classList.contains('wide'));
   if (half.length % 2) half[half.length - 1].classList.add('wide');
@@ -277,6 +348,47 @@ function field(f, data, change, team, preview) {
   const hint = null;   // sin subetiquetas bajo el nombre del campo
   const v = data[f.k];
   let input;
+  if (f.type === 'fichas') {
+    const items = (data[f.k] = Array.isArray(v) ? v : []);
+    const noun = f.item || 'ficha', max = f.max || 12;
+    const grid = el('div', { class: 'fichas-q' });
+    const actions = (r) => [
+      preview && r.url ? el('button', { class: 'btn small', type: 'button', onclick: () => preview(r) }, 'Ver') : '',
+      r.url ? el('a', { class: 'btn ghost small', href: r.url, target: '_blank', rel: 'noopener' }, 'Abrir en Drive ↗') : ''];
+    const draw = () => {
+      const cards = items.map((r, i) => {
+        if (readonly) return el('article', { class: 'fq' }, el('h3', {}, r.nombre || `${noun[0].toUpperCase()}${noun.slice(1)} ${i + 1}`),
+          el('p', { class: 'fq-sum' }, r.resumen || 'Resumen pendiente'), el('div', { class: 'row fq-act' }, actions(r)));
+        const clientId = ctxClient;
+        const txt = el('textarea', { rows: 6, class: 'fq-text', disabled: working.has(r), placeholder: working.has(r) ? 'Leyendo el archivo y escribiendo el resumen…' : 'Aquí aparecerá el resumen del archivo. Puedes corregirlo.', 'aria-label': 'Resumen', oninput: (e) => { r.resumen = e.target.value; change(f.k, items); } }, r.resumen || '');
+        const analyze = async (fileId) => {
+          working.add(r); draw();
+          try {
+            const a = await api('POST', `/api/clients/${clientId}/analisis`, { fileId, kind: f.ai });
+            r.url = a.url; r.resumen = a.resumen; if (!r.nombre) r.nombre = a.nombre; toast('Resumen escrito: revísalo');
+          } catch (e) { toast(e.message); }
+          working.delete(r); change(f.k, items); draw();
+        };
+        const choose = async () => {
+          let file;
+          for (;;) { file = await pickDriveFile(clientId); if (!file) return; if (await confirmDriveFile(file)) break; }
+          r.url = file.url || ''; r.fileId = file.id; if (!r.nombre) r.nombre = file.name; change(f.k, items);
+          await analyze(file.id);
+        };
+        const act = el('div', { class: 'row fq-act' }, actions(r), clientId && !working.has(r) ? [el('button', { class: 'btn ghost small', type: 'button', onclick: choose }, r.url ? 'Cambiar archivo' : 'Elegir archivo de Drive'), r.fileId ? el('button', { class: 'btn ghost small', type: 'button', title: 'Volver a leer el archivo y escribir otro resumen', onclick: () => analyze(r.fileId) }, 'Resumir de nuevo') : ''] : '');
+        return el('article', { class: 'fq' },
+          el('div', { class: 'row fq-head' }, el('span', { class: 'fq-n' }, i + 1),
+            el('input', { class: 'grow', value: r.nombre || '', placeholder: `Nombre del ${noun}`, 'aria-label': `Nombre del ${noun}`, oninput: (e) => { r.nombre = e.target.value; change(f.k, items); } }),
+            el('button', { class: 'btn ghost small', type: 'button', title: 'Quitar', 'aria-label': `Quitar ${noun}`, onclick: () => { items.splice(i, 1); change(f.k, items); draw(); } }, '✕')),
+          r.url ? '' : (clientId ? el('button', { class: 'btn fq-pick', type: 'button', onclick: choose }, 'Elegir archivo de Google Drive') : el('p', { class: 'muted' }, 'Sin archivo todavía.')),
+          txt, act);
+      });
+      if (!readonly && items.length < max) cards.push(el('button', { type: 'button', class: 'fq fq-add', onclick: () => { items.push({ nombre: '', url: '', resumen: '' }); draw(); grid.querySelectorAll('.fq')[items.length - 1]?.querySelector('input')?.focus(); } }, el('span', {}, '+'), `Añadir ${noun}`));
+      grid.replaceChildren(...(cards.length ? cards : [el('div', { class: 'ro' }, 'Lo rellenamos nosotros')]));
+    };
+    draw();
+    return el('div', { class: 'field' }, grid);
+  }
   if (readonly) {
     if (f.type === 'table') {
       const rows = (Array.isArray(v) ? v : []).filter((r) => f.cols.some((c) => String(r?.[c.k] ?? '').trim()));

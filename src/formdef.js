@@ -94,12 +94,12 @@ export const FORM = [
     ],
   },
   {
-    key: 'oferta', num: '2', title: 'Nuestros análisis: avatar, competencia y oferta', owner: 'team',
-    intro: 'Estos análisis los generamos nosotros a partir de lo que cuenta el cliente en «Sus clientes, competencia y ofertas». Aquí van las conclusiones y los enlaces a los documentos de Google Drive; al pulsar «Ver» aparece una vista previa a la derecha. El cliente lo ve en solo lectura.',
+    key: 'oferta', num: '2', title: 'Nuestros análisis: avatar, competencia y oferta', owner: 'team', tabs: true,
+    intro: 'Estos análisis los generamos nosotros a partir de lo que cuenta el cliente en «Sus clientes, competencia y ofertas». Tres pestañas (avatares, competencia y ofertas): en cada una, las conclusiones y una ficha por documento de Google Drive, con su resumen. Al pulsar «Ver» aparece una vista previa a la derecha. El cliente lo ve en solo lectura.',
     groups: [
-      { title: '0.0 Análisis de avatar · cliente ideal', fields: [{ k: 'avatar_resumen', label: 'Conclusiones del avatar', hint: 'A quién nos dirigimos: quién es, qué le preocupa y qué le hace decidir', type: 'textarea', owner: 'team' }, { k: 'avatar_docs', label: 'Documentos del avatar', type: 'docs', owner: 'team' }] },
-      { title: '0.0 Análisis de la competencia', fields: [{ k: 'competencia_resumen', label: 'Conclusiones sobre la competencia', hint: 'Qué hace la competencia, dónde es fuerte y dónde nos podemos diferenciar', type: 'textarea', owner: 'team' }, { k: 'competencia_docs', label: 'Documentos de la competencia', type: 'docs', owner: 'team' }] },
-      { title: '0.0 Oferta', fields: [{ k: 'oferta_resumen', label: 'Conclusiones sobre la oferta', hint: 'La oferta que vamos a comunicar y por qué funciona', type: 'textarea', owner: 'team' }, { k: 'oferta_docs', label: 'Documentos de la oferta', type: 'docs', owner: 'team' }] },
+      { title: 'Avatares', tab: 'Avatares', intro: 'Un archivo de Google Drive por avatar (el cliente ideal). Pega el enlace, y escribe el resumen de lo que dice el análisis.', fields: [{ k: 'avatar_resumen', label: 'Conclusiones del avatar', hint: 'A quién nos dirigimos: quién es, qué le preocupa y qué le hace decidir', type: 'textarea', owner: 'team' }, { k: 'avatares', label: 'Avatares', type: 'fichas', item: 'avatar', ai: 'avatar', max: 12, owner: 'team' }] },
+      { title: 'Competencia', tab: 'Competencia', intro: 'Un archivo de Google Drive por análisis de la competencia, con su resumen.', fields: [{ k: 'competencia_resumen', label: 'Conclusiones sobre la competencia', hint: 'Qué hace la competencia, dónde es fuerte y dónde nos podemos diferenciar', type: 'textarea', owner: 'team' }, { k: 'competencia_fichas', label: 'Análisis de la competencia', type: 'fichas', item: 'análisis', ai: 'competencia', max: 12, owner: 'team' }] },
+      { title: 'Ofertas', tab: 'Ofertas', intro: 'Un archivo de Google Drive por oferta, con su resumen.', fields: [{ k: 'oferta_resumen', label: 'Conclusiones sobre la oferta', hint: 'La oferta que vamos a comunicar y por qué funciona', type: 'textarea', owner: 'team' }, { k: 'oferta_fichas', label: 'Ofertas', type: 'fichas', item: 'oferta', ai: 'oferta', max: 12, owner: 'team' }] },
     ],
   },
   {
@@ -402,7 +402,7 @@ export const DIAS = [['lunes', 'Lunes'], ['martes', 'Martes'], ['miercoles', 'Mi
 export function isFilled(f, v) {
   if (f.type === 'calendario') return Array.isArray(v) && v.length > 0;
   if (f.type === 'horario') return !!v && typeof v === 'object' && Object.values(v).some((d) => d && (d.abre === true || ['m1', 'm2', 't1', 't2'].some((c) => String(d[c] || '').trim())));
-  if (f.type === 'docs') return Array.isArray(v) && v.some((r) => r?.url);
+  if (f.type === 'docs' || f.type === 'fichas') return Array.isArray(v) && v.some((r) => r?.url);
   if (f.type === 'table') return Array.isArray(v) && v.some((r) => Object.values(r || {}).some((x) => String(x || '').trim()));
   if (f.type === 'check') return v === true;
   return v !== undefined && v !== null && String(v).trim() !== '';
@@ -465,6 +465,13 @@ export function sanitizeSection(key, input, { team }) {
       out[f.k] = [...new Set((Array.isArray(v) ? v : []).map(String).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort().slice(0, 20);
     } else if (f.type === 'horario') {
       out[f.k] = Object.fromEntries(DIAS.map(([d]) => [d, { abre: !!(v && v[d] && v[d].abre === true), ...Object.fromEntries(['m1', 'm2', 't1', 't2'].map((c) => [c, String((v && v[d] && v[d][c]) ?? '').slice(0, 5)])) }]));
+    } else if (f.type === 'fichas') {
+      out[f.k] = (Array.isArray(v) ? v : []).slice(0, f.max || 12).map((r) => ({
+        nombre: String(r?.nombre ?? '').slice(0, 200),
+        url: /^https?:\/\//i.test(String(r?.url ?? '').trim()) ? String(r.url).trim().slice(0, 1000) : '',
+        resumen: String(r?.resumen ?? '').slice(0, 3000),
+        fileId: /^[\w-]{10,100}$/.test(String(r?.fileId ?? '')) ? String(r.fileId) : '',
+      })).filter((r) => r.nombre || r.url || r.resumen);
     } else if (f.type === 'docs') {
       out[f.k] = (Array.isArray(v) ? v : []).slice(0, 30).map((r) => ({
         nombre: String(r?.nombre ?? '').slice(0, 200),
@@ -474,7 +481,7 @@ export function sanitizeSection(key, input, { team }) {
     else out[f.k] = String(v ?? '').slice(0, 5000);
   }
   if ('_avania' in input) {
-    const ok = new Set(fieldsOf(s).filter((f) => f.owner !== 'team' && !['table', 'docs', 'calendario', 'horario', 'check'].includes(f.type)).map((f) => f.k));
+    const ok = new Set(fieldsOf(s).filter((f) => f.owner !== 'team' && !['table', 'docs', 'fichas', 'calendario', 'horario', 'check'].includes(f.type)).map((f) => f.k));
     out._avania = [...new Set((Array.isArray(input._avania) ? input._avania : []).map(String).filter((k) => ok.has(k)))];
   }
   return out;

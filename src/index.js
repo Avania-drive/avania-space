@@ -16,7 +16,8 @@ import { ID_RE, variantFor } from './funnels.js';
 import { sendInvite } from './invite.js';
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { PUBLIC_URL, sendHtml } from './mailer.js';
-import { driveListing, folderIdOf, createFolder, rootId as driveRootId } from './drive.js';
+import { driveListing, folderIdOf, createFolder, readClientFile, rootId as driveRootId } from './drive.js';
+import { summarize } from './ai.js';
 import { viewOn, viewMap, VIEW_KEYS, denyView } from './visibility.js';
 import { tasksOf, timelineOf, fasesOf, cleanFases, fasesBase } from './plan.js';
 import { buildReport, REPORT_TO } from './report.js';
@@ -458,6 +459,7 @@ app.get('/api/clients/:id', ...staff, wrap(async (req, res) => {
 app.patch('/api/clients/:id', ...staff, wrap(async (req, res) => {
   if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Id no válido' });
   const b = req.body;
+  if (typeof b.archived === 'boolean' && !['super_admin', 'admin'].includes(req.user.role)) return res.status(403).json({ error: 'Solo un administrador puede dar de baja o reactivar clientes.' });
   if (b.status) {
     if (!ALL_STATUS.includes(b.status)) return res.status(400).json({ error: 'Estado no válido' });
     const cat = (await q('select cat.statuses from clients c left join categories cat on cat.name = c.category where c.id = $1', [req.params.id])).rows[0];
@@ -854,6 +856,15 @@ app.put('/api/clients/:id/client-view', ...staff, requireRole('super_admin'), wr
 app.get('/api/clients/:id/drive', ...staff, wrap(async (req, res) => {
   const c = await clientOf(req, res); if (!c) return;
   res.json(await driveListing((await sectionsOf(c.id)).proyecto?.enlace_drive, { refresh: req.query.refresh === '1' }));
+}));
+
+// Analiza un archivo de la carpeta de Drive del cliente y devuelve su resumen (no guarda nada: la ficha lo guarda al aceptar).
+app.post('/api/clients/:id/analisis', ...staff, wrap(async (req, res) => {
+  const c = await clientOf(req, res); if (!c) return;
+  const b = req.body || {};
+  const file = await readClientFile((await sectionsOf(c.id)).proyecto?.enlace_drive, String(b.fileId || ''));
+  const resumen = await summarize({ kind: String(b.kind || ''), clientName: c.name, file });
+  res.json({ nombre: file.name, url: file.url, resumen });
 }));
 
 // Nueva carpeta dentro de la carpeta de Drive del cliente (lo único que Space crea en Drive).

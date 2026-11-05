@@ -535,3 +535,27 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 - Se agrupa en un commit todo lo hecho desde el 30-oct (Drive con explorador y vista previa, «Ver cliente», portal ancho, vista de cliente con escritura, equipo y tablas, campos editables, ficha de Instituto Dental Parque) más lo pendiente de la sesión del 1-nov (casillas «Se entra con» Google/Meta/Apple, ajustes de KPIs). Migraciones 016-019 ya aplicadas.
 - `.gitignore`: ahora excluye también `secrets/` (cuenta de servicio de Google) y `cache/`. Nunca se versionan el .env ni los secretos.
 - Servicio reiniciado (`pm2 restart avania-space`).
+
+## 5-nov — Duesthetic Models: ficha completada desde Notion
+- Origen: página de Notion «[DUESTHETIC] Formulario de onboarding – AVANIA Clinical». Copia previa: `/root/backups/avania-space-duesthetic-antes-notion-2026-11-05.json`. Solo se rellenó lo vacío.
+- Empresa: razón social, web, responsable (José Miguel Sánchez) y correo general; carpeta de Drive (enlace MARKETING). Caja fuerte (cifradas): Hosting (Arsys) y Respond.io; Duesthetic SimbiosysApp sin contraseña (doble verificación por correo). Nota interna con el curso, la oferta y lo que falta.
+- 5-nov: Duesthetic › Web, dominio y Google: dominio, hosting (Arsys) y responsable de la web rellenados.
+- 5-nov: Bóveda de herramientas: añadidas Arsys, Respond.io y SimbiosysApp de Duesthetic (copia de las credenciales del cliente, cifradas).
+
+## 5-nov — Duesthetic Models: dos fichas unidas y botón «Dar de baja»
+- Había dos fichas «Duesthetic Models» (la de 27-oct y la de hoy con la subcuenta de Funnels). Copia previa de ambas: `/root/backups/avania-space-duesthetic-antes-unir-2026-11-05.json`. Quedó la de la subcuenta de Funnels (activa) con los datos de las dos: secciones, credenciales (con contraseñas cifradas), nota interna, registro y carpeta de Drive. Ciudad: «Madrid y Málaga». La otra se borró.
+- Botón «Dar de baja»: NO en la ficha (es lo del cliente) sino en el panel de clientes (vistas Por estado, Fichas y Tabla), solo administradores (también se exige en el servidor). Abre una ventana que obliga a escribir «dar de baja» para activar el botón. Archiva: sale de la lista, enlace desactivado, nada se borra; con «Archivados» marcado sale «Reactivar». Probado en Chromium (escritorio y móvil). Código: `askPhrase` en fields.js, `bajaBtn` en app.js.
+
+## 5-nov — Duesthetic Models: avatares desde el PDF de la carpeta de Drive
+- Origen: «Duesthetic Avatares Investigación Express.pdf» (10 avatares, 6-ago-2026). Copia previa: `/root/backups/avania-space-duesthetic-antes-avatares-2026-11-05.json`. Solo se rellenó lo vacío.
+- **Nuestros análisis:** conclusiones del avatar (ranking /50 y lectura estratégica), resumen de la oferta, y enlaces al PDF y a la carpeta de Drive.
+- **Sus clientes, competencia y ofertas:** 10 tipos de cliente, mejores clientes, servicio estrella, diferencial, objeciones y 3 ofertas (curso grupal 1.500 €, VIP en pareja, monográfico 700 € en pareja).
+- **Notas internas (no visibles al cliente):** una por avatar con las 10 secciones del PDF (buyer persona, día típico, contenido, referentes, objeciones, mensajes, ángulos, canales, journey, retargeting) + una de origen.
+- 5-nov: A petición de Pascual se deshace la importación del PDF de avatares en Duesthetic Models (era de otro avatar/cliente): vuelven las secciones «Análisis de AVANIA» y «Sus clientes, competencia y ofertas» a su estado anterior y se borran las 11 notas. Copia de lo borrado: /root/backups/avania-space-duesthetic-antes-avatares-2026-11-05.json (estado anterior) — el contenido importado ya no se conserva.
+
+## 5-nov — Análisis de AVANIA en pestañas con fichas
+- «Nuestros análisis» (sección oferta) pasa a tener pestañas Avatares · Competencia · Ofertas. En cada una: conclusiones (portada) y fichas cuadradas, cada una con nombre, enlace de Drive (botones «Ver» y «Abrir en Drive»), resumen y «+ Añadir» (hasta 12). Datos nuevos: avatares, competencia_fichas, oferta_fichas (tipo de campo nuevo `fichas` en formdef/fields.js). Los enlaces que ya había en las listas antiguas (…_docs) se pasan a fichas sin resumen; copia en /root/backups/avania-space-oferta-antes-fichas-2026-11-05.json. Probado en Chromium (escritorio y móvil) con API simulada.
+
+## 5-nov — Fichas de análisis: elegir archivo de Drive y resumen automático
+- En cada ficha (Avatares/Competencia/Ofertas) ya no se pega el enlace: «Elegir archivo de Google Drive» abre un explorador de la carpeta del cliente (buscador; solo Documentos, Hojas, Presentaciones y PDF). Al elegir sale la ventana «¿Es este el archivo?» (nombre, tipo, carpeta, fecha y enlace para comprobarlo); si se confirma, Space lee el archivo, escribe el resumen con Claude y lo deja en la ficha (editable). Botones «Cambiar archivo» y «Resumir de nuevo».
+- Servidor: `POST /api/clients/:id/analisis` (src/index.js), lectura de archivos en drive.js (`readClientFile`, solo dentro de la carpeta del cliente) y resumen en src/ai.js. **Necesita `ANTHROPIC_API_KEY` en el .env de Space** (no está puesta; sin ella la ficha guarda el archivo y avisa de que falta la clave) y la carpeta MARKETING del cliente compartida con la cuenta de servicio de Drive. Modelo por defecto claude-sonnet-5-5 (`AI_MODEL` lo cambia). Probado en Chromium con API simulada; el resumen con IA real, sin probar.

@@ -211,7 +211,7 @@ export function docsTab(main, { fd, sections, clientId, view }) {
   ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.style.outline = ''; if (ev === 'drop') upload([...e.dataTransfer.files]); }));
   main.append(drop);
   draw().catch((e) => toast(e.message));
-  const rows = fd.form.flatMap((s) => s.groups.flatMap((g) => g.fields.filter((f) => f.type === 'docs').map((f) => ({ s, g, items: ((sections[s.key] || {})[f.k] || []).filter((r) => r.url) })))).filter((r) => r.items.length);
+  const rows = fd.form.flatMap((s) => s.groups.flatMap((g) => g.fields.filter((f) => f.type === 'docs' || f.type === 'fichas').map((f) => ({ s, g, items: ((sections[s.key] || {})[f.k] || []).filter((r) => r.url) })))).filter((r) => r.items.length);
   main.append(el('section', { class: 'card' }, el('strong', {}, 'Documentos del alta'),
     rows.length ? el('div', { class: 'plist', style: 'margin-top:8px' }, rows.flatMap((r) => r.items.map((d) => el('div', { class: 'prow' },
       el('span', { class: 'grow' }, el('strong', {}, d.nombre || 'Documento'), el('small', { class: 'muted', style: 'display:block' }, r.g.title.replace(/^[\d.]+\s/, '') + ' · ' + r.s.title)),

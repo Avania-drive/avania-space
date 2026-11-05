@@ -302,9 +302,10 @@ body.cform .cgroup > h3, .pvpage .cgroup > h3 { font-size: 14px; }
 .applink { display: flex; align-items: center; gap: 10px; } .applink .urlrow { flex: 1; min-width: 0; max-width: none; }
 
 /* Lista de clientes: las puertas como iconos y la categoría alineada a la derecha */
-.crow { grid-template-columns: minmax(240px, 1.4fr) auto 104px 100px 170px; }
+.crow { grid-template-columns: minmax(240px, 1.4fr) auto 104px 100px 170px auto; }
 .crow .cat { justify-self: end; text-align: right; }
 .crow .name { flex-wrap: wrap; row-gap: 0; } .crow .name small { font-size: 12.5px; }
+.crow .btn { justify-self: end; }
 .t th.r, .t td.r { text-align: right; }
 .gates { display: inline-flex; gap: 6px; }
 .gate { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; border: 1px solid transparent; }
@@ -855,3 +856,25 @@ table.horario input[type=time].dim:focus { opacity: 1; }
 .ssofield { display: grid; gap: 6px; min-width: 0; }
 .ssofield .ssol { font-weight: 600; font-size: 12.5px; color: var(--muted); }
 .ssopill { display: inline-flex; align-items: center; gap: 5px; } .ssopill .ssoico { width: 14px; height: 14px; }
+
+/* Fichas con enlace de Drive y resumen (Análisis de AVANIA: avatares, competencia, ofertas) */
+.stabs { margin: 0 0 14px; }
+.fichas-q { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.fq { display: flex; flex-direction: column; gap: 8px; min-height: 300px; padding: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); text-align: left; }
+.fq h3 { margin: 0; font-size: 15px; }
+.fq-head { gap: 8px; }
+.fq-n { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600; background: var(--menu-hover); color: var(--ink); }
+.fq-text { flex: 1; min-height: 110px; resize: vertical; }
+.fq-sum { flex: 1; margin: 0; white-space: pre-line; color: var(--ink); font-size: 14px; line-height: 1.45; }
+.fq-act { margin-top: auto; gap: 8px; min-height: 30px; }
+.fq-add { align-items: center; justify-content: center; gap: 6px; border-style: dashed; color: var(--muted); cursor: pointer; font: inherit; }
+.fq-add span { font-size: 28px; line-height: 1; }
+.fq-add:hover { background: var(--menu-hover); color: var(--ink); }
+
+.fq-pick { align-self: flex-start; }
+.pk { width: min(640px, 94vw); }
+.pk-list { max-height: 52vh; overflow: auto; margin-top: 10px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); }
+.pk-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: none; border: 0; border-bottom: 1px solid var(--line); text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
+.pk-row:last-child { border-bottom: 0; } .pk-row:hover:not(:disabled) { background: var(--menu-hover); } .pk-row:disabled { opacity: .45; cursor: not-allowed; }
+.pk-kind { flex: none; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 3px 7px; border-radius: 6px; background: var(--menu-hover); color: var(--muted); }
+.pk-file { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); margin: 8px 0 12px; }

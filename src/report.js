@@ -30,7 +30,7 @@ function highlights(S, creds) {
       line('Competidores', rowsOf(g('mercado', 'competidores'), ['nombre']).map((r) => r.nombre)),
       line('Ofertas', rowsOf(g('mercado', 'ofertas'), ['oferta']).map((r) => `${r.oferta}${has(r.precio) ? ` (${r.precio})` : ''}`)),
       line('Servicio estrella', g('mercado', 'estrella')), line('Diferencial', g('mercado', 'diferencial')),
-      line('Análisis de AVANIA', ['avatar_docs', 'competencia_docs', 'oferta_docs'].filter((k) => rowsOf(g('oferta', k), ['url']).length).length ? `${['avatar_docs', 'competencia_docs', 'oferta_docs'].filter((k) => rowsOf(g('oferta', k), ['url']).length).length} de 3 con documento` : null),
+      line('Análisis de AVANIA', ['avatares', 'competencia_fichas', 'oferta_fichas'].filter((k) => rowsOf(g('oferta', k), ['url']).length).length ? `${['avatares', 'competencia_fichas', 'oferta_fichas'].filter((k) => rowsOf(g('oferta', k), ['url']).length).length} de 3 con documento` : null),
       line('Valor medio de un cliente', g('negocio', 'valor_medio') && `${g('negocio', 'valor_medio')} €`),
     ],
     tecnico: [

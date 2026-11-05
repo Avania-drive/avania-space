@@ -131,3 +131,38 @@ export async function createFolder(clientFolderUrl, parentId, name) {
   cache.delete(root);
   return { id: j.id, name: j.name };
 }
+
+// ───────── Lectura del contenido de un archivo (para que Space lo analice y resuma) ─────────
+const MAX_TEXT = 120_000, MAX_PDF = 25 * 1024 * 1024;
+async function raw(path, params) {
+  const r = await fetch(`${API}${path}?${new URLSearchParams({ supportsAllDrives: 'true', ...params })}`, { headers: { Authorization: `Bearer ${await token()}` }, signal: AbortSignal.timeout(60_000) });
+  if (r.status === 404 || r.status === 403) throw Object.assign(new Error(`Space no puede leer ese archivo. Comparte la carpeta (como lector) con ${account().email}.`), { status: 404 });
+  if (!r.ok) throw Object.assign(new Error(`Google Drive respondió ${r.status} al leer el archivo.`), { status: 502 });
+  return r;
+}
+/**
+ * Contenido de un archivo de la carpeta del cliente. Devuelve { name, url, modified, kind: 'text'|'pdf', text? , base64? }.
+ * Solo archivos que cuelgan de la carpeta del cliente; Documentos, Hojas y Presentaciones de Google se exportan a texto.
+ */
+export async function readClientFile(clientFolderUrl, fileId) {
+  if (!driveEnabled()) throw Object.assign(new Error('Space aún no está conectado a Google Drive.'), { status: 409 });
+  const root = folderIdOf(clientFolderUrl);
+  if (!root) throw Object.assign(new Error('Este cliente no tiene carpeta de Drive enlazada.'), { status: 409 });
+  if (!/^[\w-]{10,}$/.test(String(fileId || ''))) throw Object.assign(new Error('Archivo no válido.'), { status: 400 });
+  await assertClientFolder(root);
+  const meta = await get(`/files/${fileId}`, { fields: 'id,name,mimeType,parents,webViewLink,modifiedTime,size' });
+  let id = meta.parents?.[0], inside = id === root;
+  for (let i = 0; i < 8 && !inside && id; i++) { const f = await get(`/files/${id}`, { fields: 'id,parents' }); id = f.parents?.[0]; inside = id === root; }
+  if (!inside) throw Object.assign(new Error('Ese archivo no está dentro de la carpeta de Drive de este cliente.'), { status: 400 });
+  const out = { name: meta.name, url: meta.webViewLink || `https://drive.google.com/file/d/${fileId}/view`, modified: meta.modifiedTime || null };
+  const m = meta.mimeType || '';
+  const clip = (t) => String(t).slice(0, MAX_TEXT);
+  if (m === 'application/vnd.google-apps.document' || m === 'application/vnd.google-apps.presentation') return { ...out, kind: 'text', text: clip(await (await raw(`/files/${fileId}/export`, { mimeType: 'text/plain' })).text()) };
+  if (m === 'application/vnd.google-apps.spreadsheet') return { ...out, kind: 'text', text: clip(await (await raw(`/files/${fileId}/export`, { mimeType: 'text/csv' })).text()) };
+  if (m === 'application/pdf') {
+    if (Number(meta.size || 0) > MAX_PDF) throw Object.assign(new Error('El PDF pesa más de 25 MB: es demasiado grande para analizarlo.'), { status: 400 });
+    return { ...out, kind: 'pdf', base64: Buffer.from(await (await raw(`/files/${fileId}`, { alt: 'media' })).arrayBuffer()).toString('base64') };
+  }
+  if (/^text\//.test(m)) return { ...out, kind: 'text', text: clip(await (await raw(`/files/${fileId}`, { alt: 'media' })).text()) };
+  throw Object.assign(new Error('Space solo sabe leer Documentos, Hojas, Presentaciones de Google, PDF y texto. Para un Word o Excel, ábrelo en Drive y conviértelo a Documento de Google (Archivo › Guardar como Documentos de Google).'), { status: 400 });
+}

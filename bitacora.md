@@ -582,3 +582,6 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 
 ## 5-nov — Tareas hechas sin tachar
 - Las tareas, subtareas y acciones de «Fechas clave» marcadas como hechas ya no llevan el texto tachado (`public/space.css`); siguen en gris suave y con el estado «Hecho» en verde.
+
+## 5-nov — Elegir archivo de Drive: ventana más ancha
+- La ventana «Elegir archivo de Google Drive» (fichas de Avatares, Competencia y Ofertas) pasa de 640 px a 980 px de ancho (94 % de la pantalla en móvil) y la lista es más alta (62 % de la pantalla), para ver bien los nombres de los documentos y su carpeta.

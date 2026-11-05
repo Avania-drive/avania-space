@@ -872,8 +872,8 @@ table.horario input[type=time].dim:focus { opacity: 1; }
 .fq-add:hover { background: var(--menu-hover); color: var(--ink); }
 
 .fq-pick { align-self: flex-start; }
-.pk { width: min(640px, 94vw); }
-.pk-list { max-height: 52vh; overflow: auto; margin-top: 10px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); }
+.pk { width: min(980px, 94vw); }
+.pk-list { max-height: 62vh; overflow: auto; margin-top: 10px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); }
 .pk-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: none; border: 0; border-bottom: 1px solid var(--line); text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
 .pk-row:last-child { border-bottom: 0; } .pk-row:hover:not(:disabled) { background: var(--menu-hover); } .pk-row:disabled { opacity: .45; cursor: not-allowed; }
 .pk-kind { flex: none; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 3px 7px; border-radius: 6px; background: var(--menu-hover); color: var(--muted); }

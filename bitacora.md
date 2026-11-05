@@ -588,3 +588,6 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 
 ## 5-nov — Tareas: papelera pequeña en lugar de la cruz roja
 - El botón de eliminar tarea y subtarea es ahora una **papelera pequeña** (15 px, en rojo; con fondo rosado al pasar el ratón) en lugar del círculo rojo con cruz. Mantiene la confirmación antes de borrar.
+
+## 5-nov — Fichas de análisis: el error del resumen se queda a la vista
+- «Elegir archivo» / «Resumir de nuevo» no escribía nada porque **Space no tiene `ANTHROPIC_API_KEY` en su `.env`** (el error está en el log desde que se creó la función). El aviso salía solo unos segundos; ahora el motivo queda escrito en rojo dentro de la ficha. Para que funcione hay que poner la clave de IA de Space en `.env` y reiniciar `avania-space`. Las «conclusiones» de cada pestaña siguen siendo texto a mano: no se rellenan solas a partir de los resúmenes (pendiente de decidir).

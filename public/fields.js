@@ -92,6 +92,7 @@ export function openModal(card, { label, onClose, cls = '' } = {}) {
   return { close, el: m };
 }
 const tabMemo = {};
+const fqErr = new WeakMap();   // último error de resumen de cada ficha (se ve en la ficha, no solo en un aviso que se va)
 const ANALIZABLE = new Set(['documento', 'hoja', 'presentación', 'pdf']);
 /** Explorador de la carpeta de Drive del cliente para elegir un archivo. Devuelve { id, name, kind, url, folder, modified } o null. */
 function pickDriveFile(clientId) {
@@ -362,11 +363,11 @@ function field(f, data, change, team, preview) {
         const clientId = ctxClient;
         const txt = el('textarea', { rows: 6, class: 'fq-text', disabled: working.has(r), placeholder: working.has(r) ? 'Leyendo el archivo y escribiendo el resumen…' : 'Aquí aparecerá el resumen del archivo. Puedes corregirlo.', 'aria-label': 'Resumen', oninput: (e) => { r.resumen = e.target.value; change(f.k, items); } }, r.resumen || '');
         const analyze = async (fileId) => {
-          working.add(r); draw();
+          working.add(r); fqErr.delete(r); draw();
           try {
             const a = await api('POST', `/api/clients/${clientId}/analisis`, { fileId, kind: f.ai });
             r.url = a.url; r.resumen = a.resumen; if (!r.nombre) r.nombre = a.nombre; toast('Resumen escrito: revísalo');
-          } catch (e) { toast(e.message); }
+          } catch (e) { toast(e.message); fqErr.set(r, e.message); }
           working.delete(r); change(f.k, items); draw();
         };
         const choose = async () => {
@@ -381,7 +382,7 @@ function field(f, data, change, team, preview) {
             el('input', { class: 'grow', value: r.nombre || '', placeholder: `Nombre del ${noun}`, 'aria-label': `Nombre del ${noun}`, oninput: (e) => { r.nombre = e.target.value; change(f.k, items); } }),
             el('button', { class: 'btn ghost small', type: 'button', title: 'Quitar', 'aria-label': `Quitar ${noun}`, onclick: () => { items.splice(i, 1); change(f.k, items); draw(); } }, '✕')),
           r.url ? '' : (clientId ? el('button', { class: 'btn fq-pick', type: 'button', onclick: choose }, 'Elegir archivo de Google Drive') : el('p', { class: 'muted' }, 'Sin archivo todavía.')),
-          txt, act);
+          fqErr.has(r) ? el('p', { class: 'err', role: 'alert', style: 'margin:6px 0 0' }, fqErr.get(r)) : '', txt, act);
       });
       if (!readonly && items.length < max) cards.push(el('button', { type: 'button', class: 'fq fq-add', onclick: () => { items.push({ nombre: '', url: '', resumen: '' }); draw(); grid.querySelectorAll('.fq')[items.length - 1]?.querySelector('input')?.focus(); } }, el('span', {}, '+'), `Añadir ${noun}`));
       grid.replaceChildren(...(cards.length ? cards : [el('div', { class: 'ro' }, 'Lo rellenamos nosotros')]));

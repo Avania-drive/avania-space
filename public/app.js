@@ -468,14 +468,15 @@ function previewPane() {
 // ───────── Ficha del cliente ─────────
 async function clientView(id, tab) {
   if (tab === 'horarios') tab = 'agenda';   // los horarios y las fechas señaladas viven solo en Empresa › Horarios
-  const { client, views = {}, statuses, sections, meta, progress, gates, allowed, dental, tasks, timeline, fases, onboarding } = await api('GET', `/api/clients/${id}`);
+  const { client, views = {}, statuses, sections, meta, progress, gates, allowed, dental, tasks, timeline, fases, team = [], onboarding } = await api('GET', `/api/clients/${id}`);
   const fd = scopeForm(formDef, allowed, dental);
   // Vista de cliente: solo administradores. Enseña cada página como la ve el cliente, en solo lectura.
   const canPreview = me.role === 'super_admin' || me.role === 'admin';
   const pvq = new URLSearchParams(location.hash.split('?')[1] || '');
   if (canPreview && pvq.get('vista') === 'cliente') return clientPreview({ id, tab, client, views, sections, fd, dental, role: pvq.get('rol') === 'miembro' ? 'miembro' : 'responsable' });
   const link = `${location.origin}/f/${client.token}`;
-  const pages = [{ key: 'plan', title: 'Cronograma y próximas acciones', short: 'Cronograma' }, { key: 'resultados', title: 'Resultados' }, { key: 'personas', title: 'Personas y equipo del cliente', short: 'Personas' }, { key: 'documentos', title: 'Documentos y notas', short: 'Documentos' }];
+  const pages = [{ key: 'plan', title: 'Tareas y próximas acciones', short: 'Tareas' }, { key: 'resultados', title: 'Resultados' }, { key: 'personas', title: 'Personas y equipo del cliente', short: 'Personas' }, { key: 'documentos', title: 'Documentos y notas', short: 'Documentos' }];
+  const topPages = pages.filter((x) => !['personas', 'documentos'].includes(x.key));   // Personas va en Empresa y Documentos en Enlaces
   const tabs = [{ key: 'resumen', title: 'Resumen' }, ...pages, ...fd.form.map((s) => ({ key: s.key, title: `${s.num} ${s.title}`, short: s.short, sec: s })), { key: 'credenciales', title: 'Credenciales', short: 'Bóveda' }, { key: 'enlaces', title: 'Enlace del cliente', short: 'Enlace cliente' }, ...(me.can_see_passwords ? [{ key: 'registro', title: 'Registro de accesos', short: 'Registro' }] : [])];
   const t = tabs.find((x) => x.key === ({ equipo: 'personas', notas: 'documentos' }[tab] || tab)) || tabs[0];   // los enlaces antiguos a Equipo del cliente y Notas caen en su nueva pestaña
   const loc = String((sections.proyecto || {}).funnels_location || '').trim();
@@ -488,10 +489,10 @@ async function clientView(id, tab) {
   const navItem = (x) => { const p = progress.sections[x.key]; return { scope: scopeOf(x), href: `#/c/${id}/${x.key}`, key: x.key, label: x.short || x.title, on: x.key === t.key, small: p ? `${p.done}/${p.total}` : (progress.sectionsTeam || {})[x.key] ? `${progress.sectionsTeam[x.key].done}/${progress.sectionsTeam[x.key].total}` : x.sec && agencyOnly(x.sec) ? 'agencia' : '' }; };
   const count = (keys) => { const r = keys.map((k) => progress.sections[k]).filter(Boolean); return r.length ? `${r.reduce((n, p) => n + p.done, 0)}/${r.reduce((n, p) => n + p.total, 0)}` : ''; };
   const areaBadge = (a) => (a.client.total ? `${a.client.pct}%` : a.team.total ? `${a.team.pct}%` : '');
-  const bloqueTecnico = (b) => [...b.sections.map((k) => tabs.find((x) => x.key === k)), ...(b.key === 'tecnico' ? [{ ...tabs.find((x) => x.key === 'credenciales') }] : [])];
+  const bloqueTecnico = (b) => [...b.sections.map((k) => tabs.find((x) => x.key === k)), ...(b.key === 'empresa' ? [tabs.find((x) => x.key === 'personas')] : []), ...(b.key === 'tecnico' ? [{ ...tabs.find((x) => x.key === 'credenciales') }, tabs.find((x) => x.key === 'documentos')] : [])];
   const manage = ['enlaces', 'registro'].map((k) => tabs.find((x) => x.key === k)).filter(Boolean);
   setSide({ title: client.name,
-    top: [navItem(tabs[0]), ...pages.map((x) => navItem(tabs.find((y) => y.key === x.key)))],
+    top: [navItem(tabs[0]), ...topPages.map((x) => navItem(tabs.find((y) => y.key === x.key)))],
     groups: [...fd.blocks.map((b, i) => { const items = bloqueTecnico(b).map(navItem); const a = progress.areas.find((x) => x.key === b.key); return { key: b.key, title: b.short, badge: a ? areaBadge(a) : '', items, scope: uniform(items) }; }),
       (() => { const items = manage.map(navItem); return { key: 'gestion', title: 'Gestión', badge: '', items, scope: uniform(items) }; })()] });
   const main = el('div', {});
@@ -520,19 +521,13 @@ async function clientView(id, tab) {
         el('div', { class: 'pbars', style: 'margin:10px 0 4px' }, pbar('el cliente ha completado', progress.pct, 'client'), pbar('AVANIA ha completado', progress.team.pct, 'agency')),
         areasNodes(progress.areas, { team: true, href: (a) => `#/c/${id}/${a.sections[0]}` })),
       closingCard(),
-      el('section', { class: 'cgroup' }, el('h2', {}, 'Tareas por prioridad'), taskColumns(tasks, { mine: 'Del cliente', ours: 'Nuestras', href: (tk) => `#/c/${id}/${tk.section}` })),
-      el('section', { class: 'cgroup' }, el('h2', {}, 'Cronograma'), el('div', { class: 'card' }, liveTimeline(14)),
-        el('p', { class: 'muted', style: 'margin:8px 0 0' }, el('a', { href: `#/c/${id}/plan` }, 'Abrir el cronograma completo y las fases del proyecto'))));
+      el('section', { class: 'cgroup' }, el('h2', {}, 'Tareas por prioridad'), taskColumns(tasks, { mine: 'Del cliente', ours: 'Nuestras', limit: 4, href: (tk) => `#/c/${id}/${tk.section}` }),
+        el('p', { class: 'muted', style: 'margin:8px 0 0' }, el('a', { href: `#/c/${id}/plan` }, 'Ver todas las tareas, con responsables y fechas'))));
     const mine = fd.form.flatMap((sec) => { const dl = (sections[sec.key] || {})._avania || []; return sec.groups.flatMap((g) => g.fields.filter((f) => dl.includes(f.k)).map((f) => ({ sec, f }))); });
     if (mine.length) main.append(el('section', { class: 'cgroup' }, el('h2', {}, `Lo hará Avania (${mine.length})`), el('div', { class: 'clist' }, mine.map(({ sec, f }) =>
       el('a', { class: 'srow', href: `#/c/${id}/${sec.key}` }, el('span', {}, f.label), el('span', { class: 'state' }, sec.title), icon('chevd'))))));
-    main.append(...fd.blocks.map((b, bi) => el('section', { class: 'cgroup' }, el('h3', {}, `${bi + 1}. ${b.title}`), el('div', { class: 'clist' }, b.sections.map((k) => {
-      const sec = fd.form.find((x) => x.key === k), p = progress.sections[k], pt = (progress.sectionsTeam || {})[k], full = p && p.done === p.total;
-      return el('a', { class: 'srow', href: `#/c/${id}/${k}` }, el('span', {}, `${sec.num} ${sec.title}`), el('span', { class: 'state' + (full ? ' ok' : '') }, p ? (full ? 'Completa' : `Faltan ${p.total - p.done} de ${p.total}`) : pt ? `AVANIA: ${pt.done}/${pt.total}` : 'Sin campos'), icon('chevd'));
-    })))),
-    el('details', { class: 'cgroup contactcard' }, el('summary', {}, 'Datos fiscales, teléfonos, WhatsApp y correos'), renderSection(partOf(formDef, 'clinica', ['razon_social', 'telefonos'], 'Datos de la empresa', dental), sections.clinica || (sections.clinica = {}), { team: true, clientName: client.name, save: (p) => api('PUT', `/api/clients/${id}/sections/clinica`, p) })),
-    el('section', { class: 'cgroup' }, el('h3', {}, 'Ficha y accesos'), el('div', { class: 'clist' }, [...pages, ...access].map((x) =>
-      el('a', { class: 'srow', href: `#/c/${id}/${x.key}` }, el('span', {}, x.title), el('span', { class: 'state' }, ''), icon('chevd'))))));
+    main.append(
+    el('details', { class: 'cgroup contactcard' }, el('summary', {}, 'Datos fiscales, teléfonos, WhatsApp y correos'), renderSection(partOf(formDef, 'clinica', ['razon_social', 'telefonos'], 'Datos de la empresa', dental), sections.clinica || (sections.clinica = {}), { team: true, clientName: client.name, save: (p) => api('PUT', `/api/clients/${id}/sections/clinica`, p) })));
   } else if (t.key === 'personas') {
     const [skey, keys] = ['clinica', ['responsables']];
     const data = sections[skey] || (sections[skey] = {});
@@ -541,10 +536,10 @@ async function clientView(id, tab) {
     main.append(el('h2', { style: 'margin:22px 0 4px' }, 'Equipo del cliente'));
     await clientUsersTab(main, id);
   } else if (t.key === 'plan') {
-    main.append(el('p', { class: 'muted' }, 'Todo lo que hacemos por el cliente, desde los documentos de investigación hasta el lanzamiento. El cliente lo ve y sigue cada paso. Los cambios se guardan al momento.'),
-      el('section', { class: 'card', style: 'margin:12px 0' }, phasesNode(fases, { edit: { save: (b) => api('PUT', `/api/clients/${id}/proceso`, b), error: (e) => toast(e.message) } })),
+    main.append(el('p', { class: 'muted' }, 'Todo lo que hacemos por el cliente, desde los documentos de investigación hasta el lanzamiento. Cada tarea tiene su responsable del equipo, fecha de inicio y de fin, y puede llevar subtareas. El cliente lo ve y sigue cada paso. Los cambios se guardan al momento.'),
+      el('section', { class: 'card', style: 'margin:12px 0' }, phasesNode(fases, { team, edit: { save: (b) => api('PUT', `/api/clients/${id}/proceso`, b), error: (e) => toast(e.message) } })),
       el('section', { class: 'cgroup' }, el('h2', {}, 'Próximas acciones'), taskColumns(tasks, { mine: 'Del cliente', ours: 'Nuestras', limit: 5, href: (tk) => (tk.section === 'proceso' ? `#/c/${id}/plan` : `#/c/${id}/${tk.section}`) })),
-      el('section', { class: 'cgroup' }, el('h2', {}, 'Fechas'), el('div', { class: 'card' }, liveTimeline(80))));
+      el('section', { class: 'cgroup' }, el('h2', {}, 'Fechas clave'), el('div', { class: 'card' }, liveTimeline(80))));
   } else if (t.key === 'resultados') {
     await resultsTab(main, { clientId: id, me, funnelsLocation: (sections.proyecto || {}).funnels_location });
   } else if (t.key === 'documentos') {
@@ -672,7 +667,7 @@ async function clientView(id, tab) {
       catch (e) { toast(e.message); }
     };
     const draw = () => box.replaceChildren(timelineNode(items, { limit, edit }),
-      el('form', { class: 'row', style: 'margin-top:12px;gap:8px;flex-wrap:wrap', onsubmit: (e) => { e.preventDefault(); add(); } }, what, when, who, el('button', { class: 'btn small' }, '+ Añadir al cronograma')));
+      el('form', { class: 'row', style: 'margin-top:12px;gap:8px;flex-wrap:wrap', onsubmit: (e) => { e.preventDefault(); add(); } }, what, when, who, el('button', { class: 'btn small' }, '+ Añadir a las tareas')));
     draw();
     return box;
   }
@@ -768,7 +763,7 @@ async function clientPreview({ id, tab, client, views = {}, sections, fd, dental
   const resp = role === 'responsable';
   const sfx = `?vista=cliente${resp ? '' : '&rol=miembro'}`;
   const info = fd.form.filter((x) => agencyOnly(x) && views[x.key]);
-  const pages = [{ key: 'resumen', title: 'Inicio' }, ...(views.plan ? [{ key: 'plan', title: 'Cronograma' }] : []), ...(views.resultados ? [{ key: 'resultados', title: 'Resultados' }] : []), ...(views.personas ? [{ key: 'personas', title: 'Mis datos · Personas y contactos' }] : []),
+  const pages = [{ key: 'resumen', title: 'Inicio' }, ...(views.plan ? [{ key: 'plan', title: 'Tareas' }] : []), ...(views.resultados ? [{ key: 'resultados', title: 'Resultados' }] : []), ...(views.personas ? [{ key: 'personas', title: 'Mis datos · Personas y contactos' }] : []),
     ...(views.zona ? [{ key: 'zona', title: 'Área de influencia' }] : []), ...(info.length ? [{ key: 'info', title: 'Información' }] : []), ...(views.documentos ? [{ key: 'documentos', title: 'Documentos' }] : []), ...(resp ? [{ key: 'equipo', title: 'Mi equipo' }] : [])];
   const secTabs = fd.form.filter((x) => !agencyOnly(x) && views[x.key] !== false).map((x) => ({ key: x.key, title: x.title, short: x.short, sec: x }));
   const credTab = resp && views.credenciales !== false ? { key: 'credenciales', title: 'Credenciales' } : null;
@@ -798,7 +793,7 @@ async function clientPreview({ id, tab, client, views = {}, sections, fd, dental
 
   if (t.key === 'resumen' || t.key === 'documentos' || t.key === 'plan') {
     const h = await api('GET', `/api/clients/${id}/preview/home?role=${role}`);
-    put(...(t.key === 'resumen' ? homeNodes(h, { preview: true }) : t.key === 'plan' ? [el('h1', {}, 'Cronograma'), el('section', { class: 'card', style: 'margin:14px 0' }, phasesNode(h.fases, { viewer: 'cliente' })), el('section', { class: 'cgroup' }, el('h2', {}, 'Fechas'), el('div', { class: 'card' }, timelineNode(h.timeline || [])))] : docsNodes(h, { loadFiles: () => api('GET', `/api/clients/${id}/drive`).then((r) => (r.state === 'ok' || r.state === 'sin_carpeta' ? r : { state: 'no_disponible' })) })));
+    put(...(t.key === 'resumen' ? homeNodes(h, { preview: true }) : t.key === 'plan' ? [el('h1', {}, 'Tareas'), el('section', { class: 'card', style: 'margin:14px 0' }, phasesNode(h.fases, { viewer: 'cliente' })), el('section', { class: 'cgroup' }, el('h2', {}, 'Fechas clave'), el('div', { class: 'card' }, timelineNode(h.timeline || [])))] : docsNodes(h, { loadFiles: () => api('GET', `/api/clients/${id}/drive`).then((r) => (r.state === 'ok' || r.state === 'sin_carpeta' ? r : { state: 'no_disponible' })) })));
   } else if (t.key === 'personas') partial('clinica', ['responsables', 'telefonos'], 'Personas y contactos');
   else if (t.key === 'zona') { const box = el('div'); zonaCard(box, id); put(el('h1', {}, 'Área de influencia'), el('p', { class: 'muted' }, 'La zona en la que trabajamos para vuestra campaña, con sus localidades y los datos de población y renta.'), box); }
   else if (t.key === 'info') {

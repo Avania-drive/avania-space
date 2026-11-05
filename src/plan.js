@@ -52,7 +52,7 @@ export function tasksOf(sections, creds = {}, { allowed = null, dental = true, n
       add({ who, priority: late ? 'alta' : norm(r.prioridad), title: String(r.accion).trim(), detail: late ? 'Vencida' : /curso/i.test(r.estado || '') ? 'En curso' : '', section: 'cronograma', area: 'cronograma', client_visible: true, kind: 'accion', due, overdue: late });
     }
   }
-  for (const f of fasesOf(sections)) {
+  for (const f of fasesFlat(sections)) {
     if (f.estado !== 'En curso' && f.estado !== 'Esperando cliente') continue;
     const due = isoDate(f.fecha), late = !!due && due < now, who = f.quien === 'Cliente' ? 'cliente' : 'avania';
     add({ who, priority: late || f.estado === 'Esperando cliente' ? 'alta' : 'media', title: f.fase, detail: [f.estado, late ? 'Vencida' : '', f.nota].filter(Boolean).join(' · '), section: 'proceso', area: null, client_visible: true, kind: 'fase', due, overdue: late });
@@ -70,14 +70,22 @@ export const FASES_BASE = [
   ['Edición de los vídeos', 'AVANIA'], ['Copies de las campañas', 'AVANIA'], ['Montaje de las campañas (anuncios, píxel, Avania Funnels y Avania Setex)', 'AVANIA'],
   ['Aprobación de copies, gráficos y vídeos', 'Cliente'], ['Formación del equipo del cliente', 'Ambos'], ['Fecha de lanzamiento estimada', 'AVANIA'], ['Primera revisión de resultados', 'AVANIA'],
 ];
-export const fasesBase = () => FASES_BASE.map(([fase, quien]) => ({ fase, quien, estado: 'Pendiente', fecha: '', nota: '' }));
+export const fasesBase = () => FASES_BASE.map(([fase, quien]) => ({ fase, quien, estado: 'Pendiente', responsable: '', inicio: '', fecha: '', nota: '', sub: [] }));
 /** Las fases del cliente: las que haya guardado la agencia o, si aún no hay ninguna, la lista estándar. */
 export const fasesOf = (sections) => (Array.isArray((sections.proceso || {}).fases) && sections.proceso.fases.length ? sections.proceso.fases : fasesBase());
+// Tarea (antes «fase») y sus subtareas: quién la hace (AVANIA / Cliente / Ambos), la persona del equipo responsable, inicio y fin (`fecha`).
 export function cleanFases(list) {
   const t = (v, n) => String(v ?? '').trim().slice(0, n);
-  return (Array.isArray(list) ? list : []).slice(0, 40).filter((r) => t(r?.fase, 160)).map((r) => ({
-    fase: t(r.fase, 160), quien: FASES_QUIEN.includes(r.quien) ? r.quien : 'AVANIA', estado: FASES_ESTADO.includes(r.estado) ? r.estado : 'Pendiente', fecha: isoDate(r.fecha) || '', nota: t(r.nota, 300) }));
+  const one = (r) => {
+    const inicio = isoDate(r.inicio) || '', fecha = isoDate(r.fecha) || '';
+    return { fase: t(r.fase, 160), quien: FASES_QUIEN.includes(r.quien) ? r.quien : 'AVANIA', estado: FASES_ESTADO.includes(r.estado) ? r.estado : 'Pendiente',
+      responsable: t(r.responsable, 80), inicio, fecha, nota: t(r.nota, 300) };
+  };
+  return (Array.isArray(list) ? list : []).slice(0, 60).filter((r) => t(r?.fase, 160)).map((r) => ({
+    ...one(r), sub: (Array.isArray(r.sub) ? r.sub : []).slice(0, 40).filter((x) => t(x?.fase, 160)).map(one) }));
 }
+/** Tareas y subtareas en una sola lista (las subtareas llevan el nombre de su tarea delante). */
+export const fasesFlat = (sections) => fasesOf(sections).flatMap((f) => [f, ...(f.sub || []).map((x) => ({ ...x, fase: `${f.fase} › ${x.fase}`, esSub: true }))]);
 
 /** Suma días laborables (de lunes a viernes; los festivos no se conocen). */
 export function addWorkdays(iso, n) {
@@ -105,7 +113,7 @@ export function timelineOf(sections, { now = today(), includeEmpty = false } = {
   for (const d of g('rodaje').dias_rodaje || []) add(isoDate(d), 'Rodaje de vídeos (fecha propuesta por el cliente)', 'cliente', { section: 'rodaje' });
   const fTxt = String(g('formacion').fechas_formacion || '').trim();
   if (fTxt) add(null, 'Formación del equipo (fechas propuestas por el cliente)', 'cliente', { section: 'formacion', note: fTxt });
-  for (const f of fasesOf(sections)) { const d = isoDate(f.fecha); if (d) add(d, f.fase, WHO[f.quien] || 'ambos', { section: 'proceso', done: f.estado === 'Hecho', note: f.estado || '', fase: true }); }
+  for (const f of fasesFlat(sections)) { const d = isoDate(f.fecha); if (d) add(d, f.fase, WHO[f.quien] || 'ambos', { section: 'proceso', done: f.estado === 'Hecho', note: [f.estado, f.responsable].filter(Boolean).join(' · '), fase: true }); }
   for (const [key, who] of [['acciones_avania', 'avania'], ['acciones_cliente', 'cliente']])
     for (const r of g('cronograma')[key] || []) if (String(r?.accion || '').trim())
       add(isoDate(r.fecha), String(r.accion).trim(), who, { section: 'cronograma', priority: norm(r.prioridad), done: /^hecha$/i.test(r.estado || ''), note: r.estado || '' });

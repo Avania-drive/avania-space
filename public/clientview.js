@@ -26,33 +26,60 @@ export function taskList(tasks, { href, empty = 'Nada pendiente.', limit = 8 } =
   tasks.length > shown.length ? el('div', { class: 'srow more muted' }, `y ${tasks.length - shown.length} más`) : '']);
 }
 
-/** Las fases del proceso, de los documentos de investigación al lanzamiento. Con `edit.save(cambios)` la agencia cambia estado, fecha, quién y el orden. */
-export function phasesNode(fases, { edit = null, viewer = 'agencia' } = {}) {
+/** Las tareas del proyecto (antes «fases»): cada una con su responsable del equipo, inicio, fin y subtareas. Con `edit.save(cambios)` la agencia las cambia; `team` = personas a las que asignarlas. */
+export function phasesNode(fases, { edit = null, viewer = 'agencia', team = [] } = {}) {
   const box = el('div', { class: 'phases' });
-  let rows = fases.map((f) => ({ ...f }));
-  const label = (e, q) => (viewer === 'cliente' && e === 'Esperando cliente' ? 'Os toca a vosotros' : e);
-  const persist = async (body) => { try { const r = await edit.save(body); rows = r.fases.map((f) => ({ ...f })); draw(); } catch (e) { edit.error(e); } };
-  const set = (i, patch) => { Object.assign(rows[i], patch); persist({ fases: rows }); };
-  const move = (i, d) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j], rows[i]]; persist({ fases: rows }); };
+  let rows = fases.map((f) => ({ ...f, sub: (f.sub || []).map((x) => ({ ...x })) }));
+  const open = new Set();   // posiciones de las tareas con las subtareas desplegadas
+  const label = (e) => (viewer === 'cliente' && e === 'Esperando cliente' ? 'Os toca a vosotros' : e);
+  const persist = async (body) => { try { const r = await edit.save(body); rows = r.fases.map((f) => ({ ...f, sub: (f.sub || []).map((x) => ({ ...x })) })); draw(); } catch (e) { edit.error(e); } };
+  const save = () => persist({ fases: rows });
+  const move = (i, d) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j], rows[i]]; save(); };
+  const span = (f) => (f.inicio && f.fecha ? `${dateText(f.inicio)} → ${dateText(f.fecha)}` : f.fecha ? `Hasta el ${dateText(f.fecha)}` : f.inicio ? `Desde el ${dateText(f.inicio)}` : '');
+  const sel = (opts, cur, label, on) => el('select', { 'aria-label': label, onchange: (e) => on(e.target.value) }, opts.map(([v, t]) => el('option', { value: v, selected: cur === v }, t)));
+  const people = (cur) => { const l = [...new Set([...team, cur].filter(Boolean))]; return [['', 'Sin asignar'], ...l.map((n) => [n, n])]; };
+  const dateIn = (f, k, label) => el('input', { type: 'date', ...DATE_ATTRS, value: f[k] || '', 'aria-label': label, onchange: (e) => { if (!e.target.value || okDate(e.target.value)) { f[k] = e.target.value; save(); } } });
+  // Una tarea o subtarea editable: nombre, responsable, estado, inicio y fin.
+  const editRow = (f, { remove, extra }) => [
+    el('input', { class: 'phname', value: f.fase, 'aria-label': 'Nombre', onchange: (e) => { f.fase = e.target.value; save(); } }),
+    el('div', { class: 'phctl' },
+      sel(people(f.responsable), f.responsable || '', 'Responsable', (v) => { f.responsable = v; save(); }),
+      sel(['Pendiente', 'En curso', 'Esperando cliente', 'Hecho'].map((o) => [o, o]), f.estado, 'Estado', (v) => { f.estado = v; save(); }),
+      el('label', { class: 'phd' }, el('small', {}, 'Inicio'), dateIn(f, 'inicio', 'Fecha de inicio')),
+      el('label', { class: 'phd' }, el('small', {}, 'Fin'), dateIn(f, 'fecha', 'Fecha de finalización'))),
+    el('span', { class: 'phtools' }, ...(extra || []), el('button', { type: 'button', class: 'btn ghost small', title: 'Quitar', 'aria-label': 'Quitar', onclick: remove }, '✕'))];
+  const addSub = (f, i) => {
+    const name = el('input', { placeholder: 'Nueva subtarea…', 'aria-label': 'Nueva subtarea', style: 'flex:1;min-width:160px' });
+    return el('form', { class: 'row phsubadd', onsubmit: (e) => { e.preventDefault(); if (!name.value.trim()) return; (f.sub ||= []).push({ fase: name.value.trim(), quien: f.quien, estado: 'Pendiente', responsable: f.responsable || '', inicio: '', fecha: '', nota: '' }); open.add(i); save(); } }, name, el('button', { class: 'btn small' }, '+ Subtarea'));
+  };
   const draw = () => {
     const done = rows.filter((f) => f.estado === 'Hecho').length, pct = rows.length ? Math.round((done / rows.length) * 100) : 0;
     const now = rows.findIndex((f) => f.estado !== 'Hecho');
-    const item = (f, i) => el('li', { class: `ph st-${f.estado === 'Hecho' ? 'hecho' : f.estado === 'En curso' ? 'curso' : f.estado === 'Esperando cliente' ? 'espera' : 'pend'}${i === now ? ' now' : ''}` },
-      el('span', { class: 'phn', 'aria-hidden': 'true' }, f.estado === 'Hecho' ? '✓' : String(i + 1)),
-      edit ? el('input', { class: 'phname', value: f.fase, 'aria-label': 'Fase', onchange: (e) => set(i, { fase: e.target.value }) }) : el('span', { class: 'phname' }, f.fase, f.nota ? el('small', {}, f.nota) : ''),
-      edit ? el('select', { 'aria-label': 'Quién', onchange: (e) => set(i, { quien: e.target.value }) }, ['AVANIA', 'Cliente', 'Ambos'].map((o) => el('option', { value: o, selected: f.quien === o }, o)))
-        : el('span', { class: 'twho', 'data-who': { AVANIA: 'avania', Cliente: 'cliente', Ambos: 'ambos' }[f.quien] }, viewer === 'cliente' && f.quien === 'Cliente' ? 'Vosotros' : f.quien),
-      edit ? el('select', { 'aria-label': 'Estado', onchange: (e) => set(i, { estado: e.target.value }) }, ['Pendiente', 'En curso', 'Esperando cliente', 'Hecho'].map((o) => el('option', { value: o, selected: f.estado === o }, o)))
-        : el('span', { class: 'phst' }, label(f.estado)),
-      edit ? el('input', { type: 'date', ...DATE_ATTRS, value: f.fecha || '', 'aria-label': 'Fecha prevista', onchange: (e) => { if (okDate(e.target.value)) set(i, { fecha: e.target.value }); } }) : el('span', { class: 'phdate' }, f.fecha ? dateText(f.fecha) : ''),
-      edit ? el('span', { class: 'phtools' }, el('button', { type: 'button', class: 'btn ghost small', title: 'Subir', 'aria-label': 'Subir fase', onclick: () => move(i, -1) }, '↑'), el('button', { type: 'button', class: 'btn ghost small', title: 'Bajar', 'aria-label': 'Bajar fase', onclick: () => move(i, 1) }, '↓'),
-        el('button', { type: 'button', class: 'btn ghost small', title: 'Quitar', 'aria-label': 'Quitar fase', onclick: () => { rows.splice(i, 1); persist({ fases: rows }); } }, '✕')) : '');
-    const newName = edit ? el('input', { placeholder: 'Añadir una fase…', 'aria-label': 'Nueva fase', style: 'flex:1;min-width:200px' }) : null;
+    const cls = (f) => (f.estado === 'Hecho' ? 'hecho' : f.estado === 'En curso' ? 'curso' : f.estado === 'Esperando cliente' ? 'espera' : 'pend');
+    const subView = (x) => el('li', { class: `phsub st-${cls(x)}` }, el('span', { class: 'phsn', 'aria-hidden': 'true' }, x.estado === 'Hecho' ? '✓' : '·'), el('span', { class: 'phname' }, x.fase),
+      x.responsable ? el('span', { class: 'phwho' }, x.responsable) : '', el('span', { class: 'phdate' }, span(x)), el('span', { class: 'phst' }, label(x.estado)));
+    const item = (f, i) => {
+      const subs = f.sub || [], sdone = subs.filter((x) => x.estado === 'Hecho').length, shown = open.has(i) || (!edit && subs.length);
+      const head = el('div', { class: `ph st-${cls(f)}${i === now ? ' now' : ''}` },
+        el('span', { class: 'phn', 'aria-hidden': 'true' }, f.estado === 'Hecho' ? '✓' : String(i + 1)),
+        ...(edit ? editRow(f, { remove: () => { rows.splice(i, 1); save(); }, extra: [
+          el('button', { type: 'button', class: `btn ghost small${subs.length ? ' has' : ''}`, title: 'Subtareas', 'aria-expanded': String(open.has(i)), onclick: () => { open.has(i) ? open.delete(i) : open.add(i); draw(); } }, subs.length ? `Subtareas ${sdone}/${subs.length}` : '+ Subtareas'),
+          el('button', { type: 'button', class: 'btn ghost small', title: 'Subir', 'aria-label': 'Subir', onclick: () => move(i, -1) }, '↑'),
+          el('button', { type: 'button', class: 'btn ghost small', title: 'Bajar', 'aria-label': 'Bajar', onclick: () => move(i, 1) }, '↓')] })
+          : [el('span', { class: 'phname' }, f.fase, f.nota ? el('small', {}, f.nota) : '', subs.length ? el('small', {}, `${sdone} de ${subs.length} subtareas hechas`) : ''),
+            f.responsable ? el('span', { class: 'phwho' }, f.responsable) : el('span', { class: 'twho', 'data-who': { AVANIA: 'avania', Cliente: 'cliente', Ambos: 'ambos' }[f.quien] }, viewer === 'cliente' && f.quien === 'Cliente' ? 'Vosotros' : f.quien),
+            el('span', { class: 'phdate' }, span(f)), el('span', { class: 'phst' }, label(f.estado))]));
+      return el('li', { class: 'phitem' }, head, shown ? el('div', { class: 'phsubs' },
+        edit ? el('ul', { class: 'phsub-list' }, subs.map((x, j) => el('li', { class: `ph phsub-edit st-${cls(x)}` }, el('span', { class: 'phsn', 'aria-hidden': 'true' }, '·'),
+          ...editRow(x, { remove: () => { subs.splice(j, 1); save(); } })))) : el('ul', { class: 'phsub-list' }, subs.map(subView)),
+        edit ? addSub(f, i) : '') : '');
+    };
+    const newName = edit ? el('input', { placeholder: 'Añadir una tarea…', 'aria-label': 'Nueva tarea', style: 'flex:1;min-width:200px' }) : null;
     box.replaceChildren(
-      el('div', { class: 'row', style: 'margin-bottom:8px' }, el('strong', { class: 'grow' }, `${done} de ${rows.length} fases hechas`), el('span', { class: 'num' }, `${pct}%`)), bar(pct, 'client'),
+      el('div', { class: 'row', style: 'margin-bottom:8px' }, el('strong', { class: 'grow' }, `${done} de ${rows.length} tareas hechas`), el('span', { class: 'num' }, `${pct}%`)), bar(pct, 'client'),
       el('ol', { class: 'phases-list' }, rows.map(item)),
-      edit ? el('form', { class: 'row', style: 'margin-top:10px;gap:8px;flex-wrap:wrap', onsubmit: (e) => { e.preventDefault(); if (!newName.value.trim()) return; rows.push({ fase: newName.value.trim(), quien: 'AVANIA', estado: 'Pendiente', fecha: '', nota: '' }); persist({ fases: rows }); } },
-        newName, el('button', { class: 'btn small' }, '+ Añadir fase'), el('button', { type: 'button', class: 'btn ghost small', onclick: () => persist({ reset: true }) }, 'Volver a la lista estándar')) : '');
+      edit ? el('form', { class: 'row', style: 'margin-top:10px;gap:8px;flex-wrap:wrap', onsubmit: (e) => { e.preventDefault(); if (!newName.value.trim()) return; rows.push({ fase: newName.value.trim(), quien: 'AVANIA', estado: 'Pendiente', responsable: '', inicio: '', fecha: '', nota: '', sub: [] }); save(); } },
+        newName, el('button', { class: 'btn small' }, '+ Añadir tarea'), el('button', { type: 'button', class: 'btn ghost small', onclick: () => persist({ reset: true }) }, 'Volver a la lista estándar')) : '');
   };
   draw();
   return box;
@@ -67,7 +94,7 @@ export function taskColumns(tasks, { href, mine = 'Del cliente', ours = 'De AVAN
 /** Cronograma: fechas por orden, con quién actúa. Con `edit({section, key}, valor)` los hitos llevan un selector de fecha para cambiarla en el sitio. */
 export function timelineNode(items, { limit = 14, who = { cliente: 'Cliente', avania: 'AVANIA', ambos: 'Ambos' }, edit = null } = {}) {
   const list = items.filter((t) => !t.done && (edit || t.date || !t.edit));
-  if (!list.length) return el('p', { class: 'muted', style: 'margin:0' }, 'Todavía no hay fechas en el cronograma. Se irán sumando con el rodaje, la formación y las acciones que se acuerden.');
+  if (!list.length) return el('p', { class: 'muted', style: 'margin:0' }, 'Todavía no hay fechas clave. Se irán sumando con el rodaje, la formación y las acciones que se acuerden.');
   return el('ol', { class: 'timeline' + (edit ? ' editable' : '') }, list.slice(0, limit).map((t) => el('li', { class: (t.past ? 'past ' : '') + (t.hito ? 'hito' : '') },
     edit && t.edit
       ? el('span', { class: 'tdate' }, el('input', { type: 'date', ...DATE_ATTRS, value: t.date || '', 'aria-label': `Fecha: ${t.label}`, onchange: (e) => { if (okDate(e.target.value)) edit(t.edit, e.target.value); } }))
@@ -103,7 +130,7 @@ export function homeNodes(h, { firstName = '', request = null, preview = false }
     first, oursNode),
     el('div', {},
     h.fases ? el('section', { class: 'cgroup' }, el('h2', {}, 'Cómo avanza vuestro proyecto'), el('div', { class: 'card' }, phasesNode(h.fases, { viewer: 'cliente' }))) : '',
-    h.fases ? el('section', { class: 'cgroup' }, el('h2', {}, 'Fechas'), el('div', { class: 'card' }, timelineNode(h.timeline || []))) : '',
+    h.fases ? el('section', { class: 'cgroup' }, el('h2', {}, 'Fechas clave'), el('div', { class: 'card' }, timelineNode(h.timeline || []))) : '',
     tools, notes)),
     el('p', { class: 'muted contact' }, `${h.client.manager ? `Vuestra persona de contacto es ${h.client.manager}. ` : ''}¿Dudas? `, h.contact ? ['Escribidnos a ', el('a', { href: `mailto:${h.contact}` }, h.contact), '.'] : 'Decídnoslo y lo vemos juntos.'),
   ];

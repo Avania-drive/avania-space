@@ -672,8 +672,8 @@ a.area:hover { background: var(--menu-hover); } a.area:focus-visible { outline: 
 
 /* ───── Fases del proceso ───── */
 .phases-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; }
-.ph { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto auto auto; gap: 10px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); }
-.ph:first-child { border-top: 0; }
+.ph { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto auto; gap: 10px; align-items: center; padding: 7px 0; }
+.phitem { border-top: 1px solid var(--line); } .phitem:first-child { border-top: 0; }
 .phn { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--bg); color: var(--muted); }
 .ph.st-hecho .phn { background: var(--client); color: #fff; } .ph.st-hecho .phname { color: var(--muted); text-decoration: line-through; }
 .ph.st-curso .phn, .ph.st-espera .phn { background: var(--accent); color: var(--accent-ink); } .ph.now .phname { font-weight: 600; }
@@ -878,3 +878,26 @@ table.horario input[type=time].dim:focus { opacity: 1; }
 .pk-row:last-child { border-bottom: 0; } .pk-row:hover:not(:disabled) { background: var(--menu-hover); } .pk-row:disabled { opacity: .45; cursor: not-allowed; }
 .pk-kind { flex: none; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 3px 7px; border-radius: 6px; background: var(--menu-hover); color: var(--muted); }
 .pk-file { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); margin: 8px 0 12px; }
+
+/* Tareas y subtareas: responsable, inicio y fin (nombre arriba; responsable, estado y fechas debajo) */
+.phases-list .ph:has(.phtools) { grid-template-columns: 26px minmax(0, 1fr) auto; align-items: start; row-gap: 6px; }
+.phases-list .ph:has(.phtools) .phname { grid-column: 2; grid-row: 1; } .phases-list .ph:has(.phtools) .phtools { grid-column: 3; grid-row: 1; flex-wrap: wrap; justify-content: flex-end; }
+.phctl { grid-column: 2 / -1; grid-row: 2; display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.phctl select { min-width: 130px; max-width: 100%; } .phctl input[type=date] { min-width: 140px; }
+.phd { display: grid; gap: 1px; } .phd small { font-size: 11px; color: var(--muted); line-height: 1; }
+.phwho { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.phsubs { margin: 0 0 8px 36px; padding-left: 12px; border-left: 2px solid var(--line); display: grid; gap: 4px; min-width: 0; }
+.phsub-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.phsub { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto auto; gap: 10px; align-items: center; padding: 4px 0; font-size: 13.5px; }
+.phsn { color: var(--muted); text-align: center; } .phsub.st-hecho .phname { color: var(--muted); text-decoration: line-through; }
+.phsub-edit { grid-template-columns: 14px minmax(0, 1fr) auto !important; border-top: 1px solid var(--line); } .phsub-edit:first-child { border-top: 0; }
+.phsubadd { gap: 8px; flex-wrap: wrap; margin: 4px 0 0; }
+.phtools .btn.has { color: var(--accent); font-weight: 600; }
+.phases { min-width: 0; } .phitem { min-width: 0; }
+@media (max-width: 760px) { .phsubs { margin-left: 8px; } .phsub { grid-template-columns: 14px 1fr; } .phsub > :nth-child(n+3) { grid-column: 2; } .phases-list .ph:has(.phtools) { grid-template-columns: 26px minmax(0, 1fr); } .phases-list .ph:has(.phtools) .phtools { grid-column: 2; grid-row: 3; justify-content: flex-start; } .phctl { grid-column: 2; } .phsub-edit { grid-template-columns: 14px minmax(0, 1fr) !important; } .phsub-edit .phtools { grid-column: 2; } }
+
+/* Resumen más compacto */
+.launch { padding: 14px 18px 14px; } .launch h2 { font-size: 18px; } .launch .sub { margin: 2px 0 10px; font-size: 13px; }
+.gatelist { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 6px; } .gatelist a { padding: 6px 10px; font-size: 13.5px; }
+.pbars + .areas, .areas { gap: 6px; } .area { padding: 7px 10px; }
+@media (min-width: 1100px) { .pbars + .areas { grid-template-columns: 1fr 1fr; } }

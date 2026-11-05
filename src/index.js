@@ -453,8 +453,15 @@ app.get('/api/clients/:id', ...staff, wrap(async (req, res) => {
   const open = recent(req);
   const shown = open ? sections : Object.fromEntries(Object.entries(sections).map(([k, v]) => [k, RESTRICTED.has(k) ? { _avania: v._avania || [] } : v]));
   res.json({ client: c, views: viewMap(c), statuses: statusesOf(stRow?.statuses), restricted: !open, sections: shown, meta, progress: progress(sections, tpl.allowed, tpl.dental), gates: gates(sections, cr, tpl.allowed), allowed: tpl.allowed ? [...tpl.allowed] : null, dental: tpl.dental,
-    tasks: tasksOf(sections, cr, { allowed: tpl.allowed, dental: tpl.dental }), timeline: timelineOf(sections, { includeEmpty: true }), fases: fasesOf(sections), onboarding: onboardingState(c, sections) });
+    tasks: tasksOf(sections, cr, { allowed: tpl.allowed, dental: tpl.dental }), timeline: timelineOf(sections, { includeEmpty: true }), fases: fasesOf(sections), team: await teamNames(sections), onboarding: onboardingState(c, sections) });
 }));
+
+// Personas del equipo de AVANIA a las que se puede asignar una tarea: las de la ficha del cliente y los usuarios activos del panel.
+async function teamNames(sections) {
+  const fromForm = (Array.isArray((sections.avania || {}).personas) ? sections.avania.personas : []).map((r) => String(r?.nombre || '').trim());
+  const users = (await q('select name from team_users where active order by created_at')).rows.map((r) => String(r.name || '').trim());
+  return [...new Set([...fromForm, ...users].filter(Boolean))];
+}
 
 app.patch('/api/clients/:id', ...staff, wrap(async (req, res) => {
   if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Id no válido' });

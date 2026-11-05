@@ -30,7 +30,7 @@ async function boot() {
 }
 
 // Las páginas que ve el cliente las decide el superadministrador («Ver cliente» en la ficha); el servidor lo vuelve a comprobar en cada petición.
-const pagesOf = () => { const v = me.views || {}; return [['inicio', 'Inicio'], ...(v.plan ? [['cronograma', 'Cronograma']] : []), ...(v.resultados ? [['resultados', 'Resultados']] : []), ...(v.personas ? [['datos', 'Mis datos']] : []),
+const pagesOf = () => { const v = me.views || {}; return [['inicio', 'Inicio'], ...(v.plan ? [['cronograma', 'Tareas']] : []), ...(v.resultados ? [['resultados', 'Resultados']] : []), ...(v.personas ? [['datos', 'Mis datos']] : []),
   ...(v.zona ? [['zona', 'Área de influencia']] : []), ...(me.info?.length ? [['info', 'Información']] : []), ...(v.documentos ? [['documentos', 'Documentos']] : [])]; };
 function shell() {
   const isResp = me.user.role === 'responsable';
@@ -71,11 +71,11 @@ async function datosView() {
     part('clinica', ['responsables', 'telefonos'], 'Personas y contactos'));
 }
 
-// Cronograma: todo lo que hacemos y cuándo, y lo próximo de cada parte.
+// Tareas: todo lo que hacemos y cuándo, y lo próximo de cada parte.
 async function planView() {
   const h = await api('GET', '/api/p/home');
   const goSection = (t) => (t.section === 'proceso' ? '#/cronograma' : `/portal/alta#${t.section}`);
-  main.replaceChildren(el('h1', {}, 'Cronograma'), el('p', { class: 'muted' }, 'Los pasos por los que vamos pasando, desde los documentos de investigación hasta el lanzamiento de vuestra campaña.'),
+  main.replaceChildren(el('h1', {}, 'Tareas'), el('p', { class: 'muted' }, 'Los pasos por los que vamos pasando, desde los documentos de investigación hasta el lanzamiento de vuestra campaña.'),
     el('section', { class: 'card', style: 'margin:14px 0' }, phasesNode(h.fases, { viewer: 'cliente' })),
     el('section', { class: 'cgroup' }, el('h2', {}, 'Próximas acciones'), taskColumns(h.tasks, { href: goSection, mine: 'Vuestras', ours: 'Nuestras', limit: 5 })),
     el('section', { class: 'cgroup' }, el('h2', {}, 'Fechas'), el('div', { class: 'card' }, timelineNode(h.timeline || []))));

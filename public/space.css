@@ -913,3 +913,34 @@ table.horario input[type=time].dim:focus { opacity: 1; }
 .timeline li.done .tlabel { color: var(--muted); text-decoration: line-through; } .timeline li.done time { color: var(--muted); }
 .tdone { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); cursor: pointer; white-space: nowrap; } .tdone input { width: auto; margin: 0; }
 .timeline li:has(.tdone) { grid-template-columns: 130px auto 1fr auto auto; }
+
+/* Tareas: nombre, responsable, estado (en color) y fechas en una sola línea; texto algo más grande */
+.phases-list .ph { font-size: 15px; } .phases-list input.phname { font-size: 15px; padding: 7px 10px; }
+.phases-list .phctl select, .phases-list .phctl input[type=date] { font-size: 14px; padding: 5px 8px; }
+.phases-list .phsub .phname, .phsub { font-size: 14.5px; } .phd small { font-size: 11.5px; }
+.stsel { font-weight: 600; border-radius: 8px; border: 1px solid transparent; }
+select.stsel.st-pend { background-color: #eef0f3; color: #4b5563; border-color: #d5d9e0; }
+select.stsel.st-curso { background-color: #dbeafe; color: #1d4ed8; border-color: #bfd6fb; }
+select.stsel.st-espera { background-color: #fef3c7; color: #92400e; border-color: #f5dc8a; }
+select.stsel.st-hecho { background-color: #d1fae5; color: #047857; border-color: #a7e3c8; }
+.phst { font-weight: 600; padding: 2px 9px; border-radius: 999px; background: #eef0f3; color: #4b5563; white-space: nowrap; }
+.ph.st-curso .phst, .phsub.st-curso .phst { background: #dbeafe; color: #1d4ed8; } .ph.st-espera .phst, .phsub.st-espera .phst { background: #fef3c7; color: #92400e; }
+.ph.st-hecho .phst, .phsub.st-hecho .phst { background: #d1fae5; color: #047857; }
+.phwho { font-size: 14px; }
+@media (min-width: 1180px) {
+  .phases-list .ph:has(.phtools) { grid-template-columns: 26px minmax(200px, 1fr) 134px 134px 150px 150px auto; align-items: end; row-gap: 0; }
+  .phases-list .ph:has(.phtools) .phctl { display: contents; }
+  .phases-list .ph:has(.phtools) .phname, .phases-list .ph:has(.phtools) .phtools { grid-row: auto; grid-column: auto; }
+  .phases-list .ph:has(.phtools) .phn { align-self: center; }
+  .phases-list input.phname { max-width: none; }
+  .phases-list .phctl select, .phases-list .phctl input[type=date] { width: 100%; box-sizing: border-box; }
+  .phsub-edit { grid-template-columns: 14px minmax(180px, 1fr) 134px 134px 150px 150px auto !important; align-items: end; }
+  .phsub-edit .phctl { display: contents; } .phsub-edit .phname, .phsub-edit .phtools { grid-row: auto; grid-column: auto; }
+}
+
+@media (min-width: 1180px) {
+  .phases-list .ph:has(.phtools) { grid-template-columns: 26px minmax(220px, 1fr) 122px 152px 138px 138px auto; }
+  .phsub-edit { grid-template-columns: 14px minmax(220px, 1fr) 122px 152px 138px 138px auto !important; }
+  .phases-list .phtools, .phsub-edit .phtools { flex-wrap: nowrap; gap: 2px; }
+  .phases-list .phtools .btn.small { padding: 4px 9px; min-width: 32px; }
+}

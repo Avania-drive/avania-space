@@ -571,3 +571,8 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 - Los campos de texto de las tareas y subtareas son más pequeños (nombre máx. 520 px, selectores y fechas compactos; la fecha mantiene ancho para verse entera).
 - «Fechas clave» (acciones añadidas con «+ Añadir a las tareas»): cada acción lleva ahora una **✕ para eliminarla** (con confirmación) y una casilla **«Hecha»** que se puede marcar y desmarcar (las hechas siguen visibles, tachadas, para poder volver a ponerlas pendientes). Los hitos (firma, inicio, montaje) no se eliminan. El cliente sigue sin ver las hechas. `src/plan.js` añade `del: {key, i}` a cada acción del cronograma.
 - Las tareas (antes fases) ya se podían eliminar con la ✕ de su fila y cambiar de estado en los dos sentidos (Pendiente / En curso / Esperando cliente / Hecho). Nota: «Próximas acciones» se recalcula al recargar la página, no al marcar.
+
+## 5-nov — Tareas: una línea por tarea, estados en color y texto más grande
+- Escritorio (≥1180 px): nombre de la tarea, responsable, estado, inicio y fin en la misma línea (fechas a la derecha del texto), seguido de los botones (subtareas «↳ n/m», subir, bajar, quitar). En pantallas más estrechas el responsable, el estado y las fechas pasan a una segunda línea.
+- El desplegable de estado va en color: Pendiente (gris), En curso (azul), Esperando cliente (ámbar) y Hecho (verde); las mismas etiquetas de color en la vista de solo lectura del cliente.
+- Texto algo más grande en tareas y subtareas (15 px; campos de 14 px).

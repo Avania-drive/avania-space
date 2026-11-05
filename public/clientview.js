@@ -44,7 +44,7 @@ export function phasesNode(fases, { edit = null, viewer = 'agencia', team = [] }
     el('input', { class: 'phname', value: f.fase, 'aria-label': 'Nombre', onchange: (e) => { f.fase = e.target.value; save(); } }),
     el('div', { class: 'phctl' },
       sel(people(f.responsable), f.responsable || '', 'Responsable', (v) => { f.responsable = v; save(); }),
-      sel(['Pendiente', 'En curso', 'Esperando cliente', 'Hecho'].map((o) => [o, o]), f.estado, 'Estado', (v) => { f.estado = v; save(); }),
+      (() => { const x = sel(['Pendiente', 'En curso', 'Esperando cliente', 'Hecho'].map((o) => [o, o]), f.estado, 'Estado', (v) => { f.estado = v; save(); }); x.className = `stsel st-${{ Hecho: 'hecho', 'En curso': 'curso', 'Esperando cliente': 'espera' }[f.estado] || 'pend'}`; return x; })(),
       el('label', { class: 'phd' }, el('small', {}, 'Inicio'), dateIn(f, 'inicio', 'Fecha de inicio')),
       el('label', { class: 'phd' }, el('small', {}, 'Fin'), dateIn(f, 'fecha', 'Fecha de finalización'))),
     el('span', { class: 'phtools' }, ...(extra || []), el('button', { type: 'button', class: 'btn ghost small', title: 'Quitar', 'aria-label': 'Quitar', onclick: remove }, '✕'))];
@@ -63,7 +63,7 @@ export function phasesNode(fases, { edit = null, viewer = 'agencia', team = [] }
       const head = el('div', { class: `ph st-${cls(f)}${i === now ? ' now' : ''}` },
         el('span', { class: 'phn', 'aria-hidden': 'true' }, f.estado === 'Hecho' ? '✓' : String(i + 1)),
         ...(edit ? editRow(f, { remove: () => { rows.splice(i, 1); save(); }, extra: [
-          el('button', { type: 'button', class: `btn ghost small${subs.length ? ' has' : ''}`, title: 'Subtareas', 'aria-expanded': String(open.has(i)), onclick: () => { open.has(i) ? open.delete(i) : open.add(i); draw(); } }, subs.length ? `Subtareas ${sdone}/${subs.length}` : '+ Subtareas'),
+          el('button', { type: 'button', class: `btn ghost small${subs.length ? ' has' : ''}`, title: subs.length ? `Subtareas: ${sdone} de ${subs.length} hechas` : 'Añadir subtareas', 'aria-label': 'Subtareas', 'aria-expanded': String(open.has(i)), onclick: () => { open.has(i) ? open.delete(i) : open.add(i); draw(); } }, subs.length ? `↳ ${sdone}/${subs.length}` : '↳ +'),
           el('button', { type: 'button', class: 'btn ghost small', title: 'Subir', 'aria-label': 'Subir', onclick: () => move(i, -1) }, '↑'),
           el('button', { type: 'button', class: 'btn ghost small', title: 'Bajar', 'aria-label': 'Bajar', onclick: () => move(i, 1) }, '↓')] })
           : [el('span', { class: 'phname' }, f.fase, f.nota ? el('small', {}, f.nota) : '', subs.length ? el('small', {}, `${sdone} de ${subs.length} subtareas hechas`) : ''),

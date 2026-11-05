@@ -594,3 +594,7 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 
 ## 5-nov — Clave de IA de Space
 - Con permiso de Pascual se copió la clave de Anthropic de AVANIA (la misma que usa Setter) al `.env` de Space (`ANTHROPIC_API_KEY`; `.env` sigue fuera de git, permisos 600; copia previa en `/root/backups/space.env.bak-20261105`). Reiniciado `avania-space`. Probado con un texto de ejemplo: el resumen se escribe bien. Comparte facturación y límites con Setter.
+
+## 5-nov — Botón «Generar conclusiones» en Nuestros análisis
+- En cada pestaña (Avatares, Competencia, Ofertas) el campo de conclusiones tiene el botón **«Generar conclusiones con los resúmenes»**: la IA redacta 4-8 viñetas a partir de los resúmenes de las fichas de esa pestaña y de lo que el cliente contó en «Sus clientes, competencia y ofertas». Si ya hay texto, pide confirmación antes de sustituirlo. Se guarda en la ficha como cualquier otro campo y se puede corregir.
+- Servidor: `POST /api/clients/:id/conclusiones` (`src/index.js`) y `conclude()` en `src/ai.js` (usa solo lo que hay escrito; no inventa). Campo marcado con `concl` en `formdef.js`. Probado con la IA real en Chromium (cliente temporal, ya borrado).

@@ -518,7 +518,26 @@ function field(f, data, change, team, preview) {
     return el('div', { class: 'field check' }, el('label', {},
       el('input', { type: 'checkbox', name: f.k, checked: v === true, onchange: (e) => change(f.k, e.target.checked) }), f.label));
   }
-  if (f.type === 'textarea') input = el('textarea', { oninput: (e) => change(f.k, e.target.value) }, v || '');
+  if (f.type === 'textarea') {
+    const ta = el('textarea', { oninput: (e) => change(f.k, e.target.value) }, v || '');
+    input = ta;
+    // Conclusiones de «Nuestros análisis»: la IA las redacta a partir de los resúmenes de las fichas de esa pestaña.
+    if (f.concl && ctxClient && team && !readonly) {
+      const clientId = ctxClient, fichasKey = { avatar: 'avatares', competencia: 'competencia_fichas', oferta: 'oferta_fichas' }[f.concl];
+      const msg = el('p', { class: 'muted', style: 'margin:6px 0 0;font-size:13px', role: 'status' });
+      const btn = el('button', { type: 'button', class: 'btn ghost small', onclick: async () => {
+        if (ta.value.trim() && !(await askConfirm({ title: 'Generar conclusiones', text: 'Ya hay texto escrito. ¿Lo sustituyo por las conclusiones generadas con los resúmenes de las fichas?', ok: 'Sustituir' }))) return;
+        btn.disabled = true; msg.className = 'muted'; msg.textContent = 'Leyendo los resúmenes y escribiendo las conclusiones…';
+        try {
+          const fichas = (Array.isArray(data[fichasKey]) ? data[fichasKey] : []).map((r) => ({ nombre: r.nombre, resumen: r.resumen }));
+          const r = await api('POST', `/api/clients/${clientId}/conclusiones`, { kind: f.concl, fichas });
+          ta.value = r.conclusiones; change(f.k, r.conclusiones); msg.textContent = 'Conclusiones escritas: revísalas y corrígelas si hace falta.';
+        } catch (e) { msg.className = 'err'; msg.textContent = e.message; }
+        btn.disabled = false;
+      } }, 'Generar conclusiones con los resúmenes');
+      input = el('div', {}, ta, el('div', { class: 'row', style: 'margin-top:6px' }, btn), msg);
+    }
+  }
   else if (f.type === 'tri' || (f.type === 'select' && f.options.length <= 3)) {
     const opts = f.type === 'tri' ? TRI : f.options;
     const box = el('div', { class: 'seg opt', role: 'group', 'aria-label': f.label });

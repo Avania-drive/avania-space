@@ -17,7 +17,7 @@ import { sendInvite } from './invite.js';
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { PUBLIC_URL, sendHtml } from './mailer.js';
 import { driveListing, folderIdOf, createFolder, readClientFile, rootId as driveRootId } from './drive.js';
-import { summarize } from './ai.js';
+import { summarize, conclude } from './ai.js';
 import { viewOn, viewMap, VIEW_KEYS, denyView } from './visibility.js';
 import { tasksOf, timelineOf, fasesOf, cleanFases, fasesBase } from './plan.js';
 import { buildReport, REPORT_TO } from './report.js';
@@ -872,6 +872,23 @@ app.post('/api/clients/:id/analisis', ...staff, wrap(async (req, res) => {
   const file = await readClientFile((await sectionsOf(c.id)).proyecto?.enlace_drive, String(b.fileId || ''));
   const resumen = await summarize({ kind: String(b.kind || ''), clientName: c.name, file });
   res.json({ nombre: file.name, url: file.url, resumen });
+}));
+
+// Conclusiones de una pestaña de «Nuestros análisis» a partir de los resúmenes de sus fichas (no guarda: la ficha lo guarda al aceptar).
+const CONCL_FICHAS = { avatar: 'avatares', competencia: 'competencia_fichas', oferta: 'oferta_fichas' };
+app.post('/api/clients/:id/conclusiones', ...staff, wrap(async (req, res) => {
+  const c = await clientOf(req, res); if (!c) return;
+  const kind = String((req.body || {}).kind || '');
+  if (!CONCL_FICHAS[kind]) return res.status(400).json({ error: 'Pestaña no válida' });
+  const all = await sectionsOf(c.id);
+  const sent = Array.isArray(req.body.fichas) ? req.body.fichas : (all.oferta || {})[CONCL_FICHAS[kind]];
+  const fichas = (Array.isArray(sent) ? sent : []).map((f) => ({ nombre: String(f?.nombre || '').slice(0, 120), resumen: String(f?.resumen || '').trim().slice(0, 3000) })).filter((f) => f.resumen).slice(0, 12);
+  if (!fichas.length) return res.status(400).json({ error: 'Primero hace falta al menos una ficha con su resumen.' });
+  const m = all.mercado || {};
+  const tabla = (rows, cols) => (Array.isArray(rows) ? rows : []).map((r) => cols.map((k) => String(r?.[k] || '').trim()).filter(Boolean).join(' · ')).filter(Boolean).slice(0, 12).join('\n');
+  const contexto = { avatar: [m.clientes_mejores, m.clientes_no, tabla(m.clientes_tipo, ['tipo', 'quien', 'busca'])], competencia: [tabla(m.competidores, ['nombre', 'mejor', 'peor'])], oferta: [tabla(m.ofertas, ['oferta', 'precio', 'condiciones']), m.estrella, m.diferencial] }[kind]
+    .map((x) => String(x || '').trim()).filter(Boolean).join('\n').slice(0, 3000);
+  res.json({ conclusiones: await conclude({ kind, clientName: c.name, fichas, contexto }) });
 }));
 
 // Nueva carpeta dentro de la carpeta de Drive del cliente (lo único que Space crea en Drive).

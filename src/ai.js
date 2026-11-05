@@ -23,3 +23,25 @@ export async function summarize({ kind, clientName, file }) {
   if (!text) throw Object.assign(new Error('La IA no ha devuelto ningún resumen.'), { status: 502 });
   return text.slice(0, 3000);
 }
+
+const CONCL = {
+  avatar: 'las CONCLUSIONES DEL AVATAR: a quién nos dirigimos, quién es, qué le preocupa u objeta y qué le hace decidir.',
+  competencia: 'las CONCLUSIONES SOBRE LA COMPETENCIA: qué hace la competencia, dónde es fuerte y dónde puede diferenciarse el cliente.',
+  oferta: 'las CONCLUSIONES SOBRE LA OFERTA: la oferta que vamos a comunicar y por qué funciona.',
+};
+/** Conclusiones de una pestaña a partir de los resúmenes de sus fichas (y de lo que el propio cliente contó). */
+export async function conclude({ kind, clientName, fichas, contexto }) {
+  if (!aiEnabled()) throw Object.assign(new Error('Falta la clave de IA de Space (ANTHROPIC_API_KEY en el .env del servidor).'), { status: 409 });
+  const docs = fichas.map((f, i) => `### ${f.nombre || `Documento ${i + 1}`}\n${f.resumen}`).join('\n\n');
+  const instr = `Eres analista de marketing de AVANIA. Cliente: ${clientName}. Redacta ${CONCL[kind] || 'las conclusiones.'}\n`
+    + 'Usa SOLO los resúmenes de los documentos y lo que el cliente ha contado. Español de España, de 4 a 8 viñetas cortas con datos concretos (máximo 1.500 caracteres). Si los documentos se contradicen, dilo. No inventes nada. Responde solo con las viñetas.\n\n'
+    + `--- RESÚMENES DE LOS DOCUMENTOS ---\n${docs}${contexto ? `\n\n--- LO QUE CUENTA EL CLIENTE ---\n${contexto}` : ''}`;
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: AbortSignal.timeout(120_000),
+    headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: process.env.AI_MODEL || 'claude-sonnet-5-5', max_tokens: 1200, messages: [{ role: 'user', content: instr }] }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(`La IA no ha podido escribir las conclusiones (${r.status}${j.error?.message ? `: ${j.error.message}` : ''}).`), { status: 502 });
+  const text = (j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n').trim();
+  if (!text) throw Object.assign(new Error('La IA no ha devuelto ninguna conclusión.'), { status: 502 });
+  return text.slice(0, 3000);
+}

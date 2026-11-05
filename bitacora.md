@@ -576,3 +576,6 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 - Escritorio (≥1180 px): nombre de la tarea, responsable, estado, inicio y fin en la misma línea (fechas a la derecha del texto), seguido de los botones (subtareas «↳ n/m», subir, bajar, quitar). En pantallas más estrechas el responsable, el estado y las fechas pasan a una segunda línea.
 - El desplegable de estado va en color: Pendiente (gris), En curso (azul), Esperando cliente (ámbar) y Hecho (verde); las mismas etiquetas de color en la vista de solo lectura del cliente.
 - Texto algo más grande en tareas y subtareas (15 px; campos de 14 px).
+
+## 5-nov — Tareas: cruz roja para eliminar tareas y subtareas
+- La ✕ gris de cada tarea y subtarea pasa a ser un icono con **cruz blanca en círculo rojo** (`.phdel`). Al pulsarla pide confirmación («¿Eliminar «…» y sus N subtareas? No se puede deshacer.»); «Cancelar» no borra nada. Probado en Chromium: eliminar subtarea, cancelar y eliminar tarea.

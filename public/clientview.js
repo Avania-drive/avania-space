@@ -1,5 +1,5 @@
 // Piezas del espacio del cliente que comparten el portal y la «Vista de cliente» de la agencia, para que la vista previa sea idéntica a la real.
-import { el, fmtDate, toUrl, DATE_ATTRS, okDate, openModal, toast } from './fields.js';
+import { el, fmtDate, toUrl, DATE_ATTRS, okDate, openModal, toast, askConfirm } from './fields.js';
 
 export const bar = (pct, cls = '') => el('div', { class: `bar ${cls}`.trim(), role: 'img', 'aria-label': `${pct}%` }, el('i', { style: `width:${Math.max(0, Math.min(100, pct))}%` }));
 const PRIO = { alta: 'Alta', media: 'Media', baja: 'Baja' };
@@ -47,7 +47,9 @@ export function phasesNode(fases, { edit = null, viewer = 'agencia', team = [] }
       (() => { const x = sel(['Pendiente', 'En curso', 'Esperando cliente', 'Hecho'].map((o) => [o, o]), f.estado, 'Estado', (v) => { f.estado = v; save(); }); x.className = `stsel st-${{ Hecho: 'hecho', 'En curso': 'curso', 'Esperando cliente': 'espera' }[f.estado] || 'pend'}`; return x; })(),
       el('label', { class: 'phd' }, el('small', {}, 'Inicio'), dateIn(f, 'inicio', 'Fecha de inicio')),
       el('label', { class: 'phd' }, el('small', {}, 'Fin'), dateIn(f, 'fecha', 'Fecha de finalización'))),
-    el('span', { class: 'phtools' }, ...(extra || []), el('button', { type: 'button', class: 'btn ghost small', title: 'Quitar', 'aria-label': 'Quitar', onclick: remove }, '✕'))];
+    el('span', { class: 'phtools' }, ...(extra || []), el('button', { type: 'button', class: 'phdel', title: 'Eliminar', 'aria-label': `Eliminar: ${f.fase}`, onclick: async () => {
+      if (await askConfirm({ title: 'Eliminar', text: `¿Eliminar «${f.fase}»${(f.sub || []).length ? ` y sus ${f.sub.length} subtareas` : ''}? No se puede deshacer.`, ok: 'Eliminar', danger: true })) remove();
+    } }, '✕'))];
   const addSub = (f, i) => {
     const name = el('input', { placeholder: 'Nueva subtarea…', 'aria-label': 'Nueva subtarea', style: 'flex:1;min-width:160px' });
     return el('form', { class: 'row phsubadd', onsubmit: (e) => { e.preventDefault(); if (!name.value.trim()) return; (f.sub ||= []).push({ fase: name.value.trim(), quien: f.quien, estado: 'Pendiente', responsable: f.responsable || '', inicio: '', fecha: '', nota: '' }); open.add(i); save(); } }, name, el('button', { class: 'btn small' }, '+ Subtarea'));

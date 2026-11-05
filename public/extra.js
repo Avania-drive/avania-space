@@ -21,6 +21,38 @@ export const partOf = (fd, secKey, fieldKeys, title, dental = true) => {
   return { ...sec, title, intro: undefined, groups: sec.groups.filter((g) => g.fields.some((f) => fieldKeys.includes(f.k))).map((g) => ({ ...g, fields: g.fields.filter((f) => dental || !f.dental) })) };
 };
 
+
+// Lista en dos columnas con TODAS las secciones de la ficha (agrupadas por área) para marcar cuáles lleva un cliente.
+// `defaults` = las de su categoría (null = todas). `initial` = las ya elegidas para ese cliente (null = las de la categoría).
+// value() devuelve la lista elegida, o null si no se ha tocado nada (se queda lo de la categoría).
+export function sectionPicker(fd, { defaults = null, initial = null } = {}) {
+  const LOCKED = new Set(['proyecto', 'clinica']);
+  const all = fd.form.map((x) => x.key);
+  let def = defaults, touched = !!initial;
+  const on = new Set(initial || def || all);
+  const boxes = new Map();
+  const wrap = el('div', { class: 'secpick' });
+  const paint = () => boxes.forEach((cb, k) => { cb.checked = LOCKED.has(k) || on.has(k); });
+  const count = el('span', { class: 'muted secpick-n' });
+  const upd = () => { count.textContent = `${[...boxes.keys()].filter((k) => boxes.get(k).checked).length} de ${all.length} secciones`; };
+  const set = (keys) => { on.clear(); keys.forEach((k) => on.add(k)); paint(); upd(); };
+  const tool = (txt, fn) => el('button', { type: 'button', class: 'btn ghost small', onclick: () => { touched = true; fn(); } }, txt);
+  const group = (b) => el('section', { class: 'secpick-g' }, el('h4', {}, b.title),
+    el('div', { class: 'secpick-cols' }, b.sections.map((k) => {
+      const sec = fd.form.find((x) => x.key === k); if (!sec) return '';
+      const cb = el('input', { type: 'checkbox', checked: LOCKED.has(k) || on.has(k), disabled: LOCKED.has(k), onchange: (e) => { touched = true; e.target.checked ? on.add(k) : on.delete(k); upd(); } });
+      boxes.set(k, cb);
+      return el('label', { class: 'secpick-row' + (LOCKED.has(k) ? ' locked' : '') }, cb, el('span', {}, `${sec.num} ${sec.title}`, LOCKED.has(k) ? el('small', { class: 'muted' }, ' · siempre') : ''));
+    })));
+  wrap.append(el('div', { class: 'row secpick-tools' }, tool('Marcar todo', () => set(all)), tool('Quitar todo', () => set([])), tool('Las de la categoría', () => set(def || all)), el('span', { class: 'grow' }), count),
+    ...fd.blocks.map(group));
+  upd();
+  return { node: wrap,
+    value: () => (touched ? [...boxes.keys()].filter((k) => boxes.get(k).checked) : null),
+    setDefaults: (d) => { def = d; if (!touched) set(d || all); },
+    reset: (d) => { touched = false; def = d; set(d || all); } };
+}
+
 // ───────── Panel general ─────────
 export async function panelView(view, go) {
   const [d, { requests }] = await Promise.all([api('GET', '/api/dashboard'), api('GET', '/api/access-requests')]);

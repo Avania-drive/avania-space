@@ -1,7 +1,7 @@
 import { DATE_ATTRS, el, api, toast, renderSection, renderCredentials, helpBlock, helpButton, toUrl, appIcon, appName, openModal, askText, askConfirm, askPhrase, notice, fmtDate } from './fields.js';
 import { embedUrl } from './preview.js';
 import { homeNodes, docsNodes, areasNodes, taskColumns, timelineNode, phasesNode, bar, driveFilesNode } from './clientview.js';
-import { kpisNode, scopeForm, partOf, panelView, configView, notesTab, linksCard, docsTab, lastChange, avatar, logoButton, clientUsersTab, vaultView, resultsTab, pipelineTools, agencyOnly, zonaCard } from './extra.js';
+import { kpisNode, scopeForm, partOf, panelView, configView, notesTab, linksCard, docsTab, lastChange, avatar, logoButton, clientUsersTab, vaultView, resultsTab, pipelineTools, agencyOnly, zonaCard, sectionPicker } from './extra.js';
 
 const app = document.getElementById('app');
 let me = null, formDef = null, ayuda = {};
@@ -404,13 +404,22 @@ function newClient() {
   const err = el('div', { class: 'err', role: 'alert' });
   const name = el('input', { id: 'nc-nombre', name: 'name', autocomplete: 'off', required: true, 'data-autofocus': '' });
   const city = el('input', { id: 'nc-ciudad', name: 'city', autocomplete: 'off' });
+  let cats = [];
+  const catSel = el('select', { id: 'nc-cat', 'aria-label': 'Categoría' });
+  const fillCats = (sel) => catSel.replaceChildren(el('option', { value: '' }, '— Sin categoría (la elijo después) —'), ...cats.map((c) => el('option', { value: c.name, selected: c.name === sel }, c.name)));
+  const picker = sectionPicker(formDef, {});
+  catSel.addEventListener('change', () => picker.setDefaults((cats.find((c) => c.name === catSel.value) || {}).sections || null));
+  api('GET', '/api/categories').then((r) => { cats = r.categories; fillCats(''); }).catch(() => fillCats(''));
   const card = el('form', { class: 'card', onsubmit: async (e) => {
     e.preventDefault(); err.textContent = '';
-    try { const { client } = await api('POST', '/api/clients', { name: name.value.trim(), city: city.value.trim() }); d.close(); location.hash = `#/c/${client.id}`; } catch (er) { err.textContent = er.message; }
+    try { const { client } = await api('POST', '/api/clients', { name: name.value.trim(), city: city.value.trim(), category: catSel.value, sections: picker.value() }); d.close(); location.hash = `#/c/${client.id}`; } catch (er) { err.textContent = er.message; }
   } }, el('h2', {}, 'Nuevo cliente'),
-  el('label', { for: 'nc-nombre' }, 'Nombre de la empresa'), name, el('label', { for: 'nc-ciudad', style: 'margin-top:10px' }, 'Ciudad (opcional)'), city, err,
+  el('label', { for: 'nc-nombre' }, 'Nombre de la empresa'), name, el('label', { for: 'nc-ciudad', style: 'margin-top:10px' }, 'Ciudad (opcional)'), city,
+  el('label', { for: 'nc-cat', style: 'margin-top:10px' }, 'Categoría'), catSel,
+  el('h3', { style: 'margin:16px 0 0;font-size:15px' }, '¿Qué lleva este cliente?'), el('p', { class: 'muted', style: 'margin:2px 0 0;font-size:13px' }, 'Marca las secciones de la ficha que hay que implementarle; las que desmarques no aparecerán en su ficha ni en su portal. Se puede cambiar después.'),
+  el('div', { class: 'secpick-box' }, picker.node), err,
   el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn ghost', onclick: () => d.close() }, 'Cancelar'), el('button', { class: 'btn' }, 'Crear cliente')));
-  const d = openModal(card, { label: 'Nuevo cliente', cls: 'wide-modal' });
+  const d = openModal(card, { label: 'Nuevo cliente', cls: 'wide-modal sec-modal' });
 }
 
 // Alta con el ID de la subcuenta del cliente en Avania Funnels (la que ya se ha creado para él).
@@ -430,11 +439,13 @@ function newFromFunnels() {
     }
   });
   api('GET', '/api/categories').then((r) => { cats = r.categories; fill(''); }).catch(() => fill(''));
+  const picker = sectionPicker(formDef, {});
+  catSel.addEventListener('change', () => { if (catSel.value && catSel.value !== '__nueva') picker.setDefaults((cats.find((c) => c.name === catSel.value) || {}).sections || null); });
   const close = () => dlg.close();
   const go = async (e) => {
     e.preventDefault(); err.textContent = ''; btn.disabled = true;
     try {
-      const r = await api('POST', '/api/clients/from-funnels', { locationId: idIn.value.trim(), name: nameIn.value.trim(), city: cityIn.value.trim(), category: catSel.value });
+      const r = await api('POST', '/api/clients/from-funnels', { locationId: idIn.value.trim(), name: nameIn.value.trim(), city: cityIn.value.trim(), category: catSel.value, sections: picker.value() });
       close(); toast('Cliente creado'); location.hash = `#/c/${r.client.id}`;
     } catch (er) { err.textContent = er.message; btn.disabled = false; }
   };
@@ -445,9 +456,11 @@ function newFromFunnels() {
     el('label', { for: 'nf-nombre' }, 'Nombre de la empresa'), nameIn,
     el('label', { for: 'nf-id', style: 'margin-top:10px' }, 'ID de la subcuenta'), idIn,
     el('label', { for: 'nf-ciudad', style: 'margin-top:10px' }, 'Ciudad (opcional)'), cityIn,
-    el('label', { style: 'margin-top:10px' }, 'Categoría', catSel), err,
+    el('label', { style: 'margin-top:10px' }, 'Categoría', catSel),
+    el('h3', { style: 'margin:16px 0 0;font-size:15px' }, '¿Qué lleva este cliente?'), el('p', { class: 'muted', style: 'margin:2px 0 0;font-size:13px' }, 'Marca las secciones de la ficha que hay que implementarle; las que desmarques no aparecerán en su ficha ni en su portal. Se puede cambiar después.'),
+    el('div', { class: 'secpick-box' }, picker.node), err,
     el('div', { class: 'row', style: 'margin-top:12px' }, btn, el('button', { class: 'btn ghost', type: 'button', onclick: close }, 'Cancelar')));
-  const dlg = openModal(card, { label: 'Nuevo cliente desde Avania Funnels', cls: 'wide-modal' });
+  const dlg = openModal(card, { label: 'Nuevo cliente desde Avania Funnels', cls: 'wide-modal sec-modal' });
 }
 
 // Panel lateral con la vista previa de un documento de Google Drive (DOCX, PDF, Docs…).
@@ -651,6 +664,23 @@ async function clientView(id, tab) {
 
   // Datos básicos del cliente (nombre, ciudad, categoría, responsable, fechas y enlaces). Son los mismos campos de la ficha: se guardan al momento.
   const onlyFields = (skey, keys, title) => { const sec = partOf(formDef, skey, keys, title); return { ...sec, groups: sec.groups.map((g) => ({ ...g, title: '', intro: undefined, fields: g.fields.filter((f) => keys.includes(f.k)) })).filter((g) => g.fields.length) }; };
+  // Qué secciones de la ficha lleva este cliente (propias o, si no se ha tocado, las de su categoría).
+  function secEditor() {
+    const own = Array.isArray(client.sections) ? client.sections : null;
+    const picker = sectionPicker(formDef, { initial: own || allowed || null, defaults: allowed || null });
+    let catDef = null;   // las secciones de su categoría (para «volver a ellas»)
+    api('GET', '/api/categories').then((r) => { catDef = (r.categories.find((c) => c.name === client.category) || {}).sections || null; picker.setDefaults(catDef); }).catch(() => {});
+    const msg = el('p', { class: 'muted', style: 'margin:6px 0 0;font-size:13px', role: 'status' }, own ? 'Este cliente tiene una selección propia.' : 'Ahora lleva las secciones de su categoría.');
+    const save = async (sectionsList) => {
+      try { await api('PUT', `/api/clients/${id}/modulos`, { sections: sectionsList }); msg.textContent = sectionsList ? 'Secciones guardadas.' : 'Vuelve a llevar las de su categoría.'; client.sections = sectionsList; }
+      catch (e) { msg.textContent = e.message; }
+    };
+    return el('section', { class: 'card', style: 'margin-top:12px' }, el('h3', { style: 'margin:0;font-size:15px' }, '¿Qué lleva este cliente?'),
+      el('p', { class: 'muted', style: 'margin:2px 0 0;font-size:13px' }, 'Marca las secciones que hay que implementarle. Las que desmarques desaparecen de su ficha y de su portal; lo ya rellenado no se borra.'),
+      el('div', { class: 'secpick-box' }, picker.node),
+      el('div', { class: 'row', style: 'margin-top:8px;gap:8px;flex-wrap:wrap' }, el('button', { type: 'button', class: 'btn small', onclick: () => save(picker.value() || [...(allowed || formDef.form.map((x) => x.key))]) }, 'Guardar secciones'),
+        el('button', { type: 'button', class: 'btn ghost small', onclick: async () => { await save(null); picker.reset(catDef); } }, 'Volver a las de la categoría')), msg);
+  }
   function editClient() {
     const dataC = sections.clinica || (sections.clinica = {}), dataP = sections.proyecto || (sections.proyecto = {});
     if (!dataC.nombre_comercial) dataC.nombre_comercial = client.name;   // por si la ficha aún no los tiene: se ve lo que hay en el listado
@@ -662,6 +692,7 @@ async function clientView(id, tab) {
       renderSection(onlyFields('clinica', ['nombre_comercial', 'ciudad'], 'La empresa'), dataC, { team: true, clientName: client.name, save: (p) => api('PUT', `/api/clients/${id}/sections/clinica`, p) }),
       warn,
       renderSection(onlyFields('proyecto', ['categoria', 'responsable_cuenta', 'fecha_firma', 'fecha_inicio', 'enlace_clickup', 'enlace_drive', 'funnels_location'], 'El proyecto'), dataP, { team: true, clientName: client.name, save: (p) => api('PUT', `/api/clients/${id}/sections/proyecto`, p) }),
+      ...(['super_admin', 'admin'].includes(me.role) ? [secEditor()] : []),
       el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn', onclick: () => m.close() }, 'Listo')));
     const m = openModal(body, { label: 'Datos del cliente', cls: 'client-modal', onClose: () => route() });
   }

@@ -119,7 +119,7 @@ export function mountPortal(app, d) {
   // Lo que ve el cliente en su inicio. Lo usan el portal y la «Vista de cliente» de los administradores.
   async function homeFor(c, role) {
     const sections = await sectionsOf(c.id);
-    const tpl = await templateOf(c.category);
+    const tpl = await templateOf(c.category, c.sections);
     const cr = {};
     for (const r of (await q('select status, count(*)::int n from credentials where client_id = $1 group by 1', [c.id])).rows) cr[r.status] = r.n;
     const isResp = role === 'responsable';

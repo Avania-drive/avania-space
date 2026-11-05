@@ -360,9 +360,17 @@ const ALL_STATUS = ['onboarding', 'montaje', 'rodaje', 'formacion', 'activa', 'p
 const DEFAULT_STATUS = ['onboarding', 'rodaje', 'formacion', 'activa', 'pausada'];
 const statusesOf = (list) => (Array.isArray(list) && list.length ? list : DEFAULT_STATUS);
 const allowedSet = (sections) => (Array.isArray(sections) ? new Set(sections) : null);
-async function templateOf(category) {
+// `own` = las secciones elegidas para ese cliente (clients.sections); si no hay, las de su categoría.
+async function templateOf(category, own = null) {
   const r = category ? (await q('select sections from categories where name = $1', [category])).rows[0] : null;
-  return { allowed: allowedSet(r?.sections), dental: variantFor(category) === 'dental' };
+  return { allowed: allowedSet(Array.isArray(own) ? own : r?.sections), dental: variantFor(category) === 'dental' };
+}
+const CLIENT_LOCKED = ['proyecto', 'clinica'];   // siempre van: guardan la categoría, el nombre y los enlaces del cliente
+/** Lista de secciones elegida a mano: solo claves que existen, con las imprescindibles dentro. null = las de la categoría. */
+function cleanSections(list) {
+  if (!Array.isArray(list)) return null;
+  const valid = new Set(FORM.map((x) => x.key));
+  return [...new Set([...CLIENT_LOCKED, ...list.map(String).filter((k) => valid.has(k))])];
 }
 
 // ───────── Categorías de cliente (el desplegable se alimenta de aquí) ─────────
@@ -391,9 +399,9 @@ app.get('/api/clients', ...staff, wrap(async (_req, res) => {
   for (const c of creds.rows) (cr[c.client_id] ||= { pendiente: 0, recibida: 0, verificada: 0 })[c.status] = c.n;
   res.json({
     clients: cl.rows.map(({ category_sections, category_statuses, ...c }) => ({
-      ...c, statuses: statusesOf(category_statuses), ...(({ pct, team }) => ({ progress: pct, team_progress: team.pct }))(progress(by[c.id] || {}, allowedSet(category_sections), variantFor(c.category) === 'dental')),
+      ...c, statuses: statusesOf(category_statuses), ...(({ pct, team }) => ({ progress: pct, team_progress: team.pct }))(progress(by[c.id] || {}, allowedSet(c.sections ?? category_sections), variantFor(c.category) === 'dental')),
       credentials: cr[c.id] || { pendiente: 0, recibida: 0, verificada: 0 },
-      gates: gates(by[c.id] || {}, cr[c.id], allowedSet(category_sections)),
+      gates: gates(by[c.id] || {}, cr[c.id], allowedSet(c.sections ?? category_sections)),
       last_activity: last[c.id] && last[c.id] > c.updated_at ? last[c.id] : c.updated_at,
     })),
   });
@@ -402,10 +410,12 @@ app.get('/api/clients', ...staff, wrap(async (_req, res) => {
 app.post('/api/clients', ...staff, wrap(async (req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 200);
   if (!name) return res.status(400).json({ error: 'Pon el nombre de la empresa' });
-  const r = await q('insert into clients (name, token, city) values ($1,$2,$3) returning *',
-    [name, randomToken(24), String(req.body.city || '').slice(0, 120) || null]);
+  const r = await q('insert into clients (name, token, city, sections) values ($1,$2,$3,$4) returning *',
+    [name, randomToken(24), String(req.body.city || '').slice(0, 120) || null, cleanSections(req.body.sections)]);
   const c = r.rows[0];
   await saveSection(c, 'clinica', { nombre_comercial: name, ...(c.city ? { ciudad: c.city } : {}) }, req.user.email);
+  const cat0 = String(req.body.category || '').trim().slice(0, 60);
+  if (cat0) { await q('insert into categories (name) values ($1) on conflict do nothing', [cat0]); await saveSection(c, 'proyecto', { categoria: cat0 }, req.user.email); }
   // Filas de credenciales sugeridas, vacías, para que el cliente solo tenga que rellenarlas.
   for (const s of SUGGESTED) await q('insert into credentials (client_id, service, updated_by) values ($1,$2,$3)', [c.id, s, req.user.email]);
   res.json({ client: c });
@@ -423,8 +433,8 @@ app.post('/api/clients/from-funnels', ...staff, wrap(async (req, res) => {
   if (!category) return res.status(400).json({ error: 'Elige la categoría.' });
   const city = String(req.body.city || '').trim().slice(0, 120) || null;
   // El ID de la subcuenta hace de identificador del cliente en Funnels (enlace del submenú /c/{{location.id}}).
-  const c = (await q('insert into clients (name, token, city, funnels_contact_id) values ($1,$2,$3,$4) returning *',
-    [name, randomToken(24), city, location])).rows[0];
+  const c = (await q('insert into clients (name, token, city, funnels_contact_id, sections) values ($1,$2,$3,$4,$5) returning *',
+    [name, randomToken(24), city, location, cleanSections(req.body.sections)])).rows[0];
   await q('insert into categories (name) values ($1) on conflict do nothing', [category]);
   await saveSection(c, 'proyecto', { categoria: category, funnels_location: location }, req.user.email);
   await saveSection(c, 'clinica', sanitizeSection('clinica', { nombre_comercial: name, ...(city ? { ciudad: city } : {}) }, { team: true }) || {}, req.user.email);
@@ -451,7 +461,7 @@ app.get('/api/clients/:id', ...staff, wrap(async (req, res) => {
   const meta = Object.fromEntries((await q('select section, updated_at, updated_by from client_sections where client_id = $1', [c.id])).rows.map((x) => [x.section, { at: x.updated_at, by: x.updated_by }]));
   const cr = {};
   for (const r of (await q('select status, count(*)::int n from credentials where client_id = $1 group by 1', [c.id])).rows) cr[r.status] = r.n;
-  const tpl = await templateOf(c.category);
+  const tpl = await templateOf(c.category, c.sections);
   const stRow = c.category ? (await q('select statuses from categories where name = $1', [c.category])).rows[0] : null;
   // Sin contraseña reciente solo salen las marcas «lo hará Avania» de esas secciones (sin ningún valor).
   const open = recent(req);
@@ -466,6 +476,16 @@ async function teamNames(sections) {
   const users = (await q('select name from team_users where active order by created_at')).rows.map((r) => String(r.name || '').trim());
   return [...new Set([...fromForm, ...users].filter(Boolean))];
 }
+
+// Secciones de la ficha que lleva este cliente. `sections: null` = vuelve a las de su categoría.
+app.put('/api/clients/:id/modulos', ...staff, requireRole('super_admin', 'admin'), wrap(async (req, res) => {
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Id no válido' });
+  const list = req.body.sections === null ? null : cleanSections(req.body.sections);
+  if (req.body.sections !== null && !list) return res.status(400).json({ error: 'Indica las secciones' });
+  const r = await q('update clients set sections = $1, updated_at = now() where id = $2 returning id', [list, req.params.id]);
+  if (!r.rows[0]) return res.status(404).json({ error: 'No existe' });
+  res.json({ sections: list });
+}));
 
 app.patch('/api/clients/:id', ...staff, wrap(async (req, res) => {
   if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Id no válido' });
@@ -647,7 +667,7 @@ app.delete('/api/links/:id', ...staff, wrap(async (req, res) => {
 // ───────── Panel general ─────────
 app.get('/api/dashboard', ...staff, wrap(async (_req, res) => {
   const [cl, secs, creds, cats] = await Promise.all([
-    q('select c.id, c.name, c.category, c.status, c.start_date, c.created_at from clients c where not c.archived'),
+    q('select c.id, c.name, c.category, c.sections, c.status, c.start_date, c.created_at from clients c where not c.archived'),
     q('select client_id, section, data from client_sections'),
     q("select client_id, count(*)::int n from credentials where status = 'pendiente' group by 1"),
     q('select name, color, sections from categories'),
@@ -664,7 +684,7 @@ app.get('/api/dashboard', ...staff, wrap(async (_req, res) => {
     total[key] = (total[key] || 0) + 1;
     if (c.status === 'activa') active[key] = (active[key] || 0) + 1;
     if (c.status === 'activa' || c.status === 'pausada') continue;
-    const pct = progress(by[c.id] || {}, allowedSet(cat[c.category]?.sections), variantFor(c.category) === 'dental').pct;
+    const pct = progress(by[c.id] || {}, allowedSet(c.sections ?? cat[c.category]?.sections), variantFor(c.category) === 'dental').pct;
     const since = new Date(c.start_date || c.created_at);
     if (pct < 100) incomplete.push({ id: c.id, name: c.name, category: c.category, pct, days: Math.max(0, Math.floor((Date.now() - since) / day)) });
     if (pend[c.id]) pending.push({ id: c.id, name: c.name, n: pend[c.id] });
@@ -786,7 +806,7 @@ app.get(['/api/f/:token', '/api/p/form'], byClient, wrap(async (req, res) => {
   const cr = await q('select * from credentials where client_id = $1 order by service, updated_at', [req.client.id]);
   const crn = {};
   for (const r of cr.rows) crn[r.status] = (crn[r.status] || 0) + 1;
-  const tpl = await templateOf(req.client.category);
+  const tpl = await templateOf(req.client.category, req.client.sections);
   res.json({
     client: { name: req.client.name, manager: req.client.account_manager || null }, sections, progress: forClientProgress(progress(all, tpl.allowed, tpl.dental)),
     tasks: forClientTasks(tasksOf(all, crn, { allowed: tpl.allowed, dental: tpl.dental })), timeline: timelineOf(all), fases: fasesOf(all),
@@ -803,7 +823,7 @@ app.put(['/api/f/:token/sections/:key', '/api/p/form/sections/:key'], byClient, 
   const data = sanitizeSection(req.params.key, req.body || {}, { team: false });
   if (!data) return res.status(404).json({ error: 'Sección desconocida' });
   const merged = await saveSection(req.client, req.params.key, data, 'cliente');
-  const tpl = await templateOf(req.client.category);
+  const tpl = await templateOf(req.client.category, req.client.sections);
   res.json({ data: forClient(req.params.key, merged), progress: forClientProgress(progress(await sectionsOf(req.client.id), tpl.allowed, tpl.dental)) });
   if (req.params.key === 'cierre') maybeSendReport(req.client.id).catch((e) => console.error(`[informe] ${e.message}`));
 }));
@@ -922,7 +942,7 @@ function onboardingState(c, sections) {
 }
 async function reportFor(c) {
   const sections = await sectionsOf(c.id);
-  const tpl = await templateOf(c.category);
+  const tpl = await templateOf(c.category, c.sections);
   const credRows = (await q('select service, status, (password_enc is not null) has_password from credentials where client_id = $1 order by service', [c.id])).rows;
   const cr = {};
   for (const r of credRows) cr[r.status] = (cr[r.status] || 0) + 1;

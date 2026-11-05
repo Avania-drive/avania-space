@@ -606,3 +606,9 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 
 ## 5-nov — Modales de cliente: mínimo 600 px
 - «Datos del cliente» (820 px), «Nuevo cliente» y «Nuevo cliente desde Avania Funnels» (640 px) ya no se quedan en los 400 px estándar de las ventanas pequeñas; el mínimo es 600 px (en móvil, el 94 % de la pantalla).
+
+## 5-nov — Elegir qué secciones lleva cada cliente (alta a mano, desde Funnels y «Datos del cliente»)
+- **Alta:** «Nuevo cliente» y «Nuevo cliente desde Avania Funnels» llevan ahora la lista «¿Qué lleva este cliente?»: **todas las secciones de la ficha en dos columnas, agrupadas por área, con una casilla cada una** («Marcar todo», «Quitar todo», «Las de la categoría» y contador). Al elegir categoría se marcan las de esa categoría; si no se toca nada, el cliente sigue las de su categoría. «Nuevo cliente» a mano tiene ahora también selector de categoría.
+- **Después:** en «Datos del cliente» (pulsar el nombre) hay la misma lista con «Guardar secciones» y «Volver a las de la categoría» (solo administradores). Lo desmarcado desaparece de su ficha, del avance, de los pendientes y del portal; **lo ya rellenado no se borra** (al volver a marcarla reaparece).
+- Datos: `sql/020_client_sections.sql` (`clients.sections text[]`, null = las de la categoría; migración aplicada). `templateOf(category, own)` usa la lista propia; listado, panel, portal y ficha la respetan. `PUT /api/clients/:id/modulos` (admin) y `sections` en `POST /api/clients` y `/from-funnels`; `cleanSections` valida las claves y deja siempre «proyecto» y «clinica» (1.1 y la ficha de proyecto, que guardan nombre, categoría y enlaces).
+- Las pantallas de nivel superior (Tareas, Resultados, Personas, Documentos) no se eligen aquí: siguen controladas con «Ver cliente». Probado en Chromium con un cliente temporal (borrado).

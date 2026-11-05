@@ -972,3 +972,14 @@ h1.editname:hover .editpen, h1.editname:focus-visible .editpen { opacity: 1; } h
 /* Modales de cliente (alta, desde Funnels y modificación): nunca más estrechos de 600 px */
 .modal.wide-modal .card { width: min(640px, 94vw); max-width: none; }
 .modal.client-modal .card { min-width: min(600px, 94vw); }
+
+/* Elegir qué secciones lleva un cliente: dos columnas con una casilla por sección */
+.secpick { display: grid; gap: 12px; margin: 12px 0 4px; }
+.secpick-tools { gap: 6px; align-items: center; flex-wrap: wrap; } .secpick-n { font-size: 13px; }
+.secpick-g h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.secpick-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+.secpick-row { display: flex !important; align-items: flex-start; gap: 8px; margin: 0 !important; padding: 5px 8px; border-radius: 8px; font-weight: 500 !important; font-size: 13.5px; cursor: pointer; }
+.secpick-row:hover { background: var(--menu-hover); } .secpick-row input { width: auto; margin: 3px 0 0; flex: none; } .secpick-row.locked { opacity: .75; cursor: default; }
+.secpick-box { max-height: 46vh; overflow: auto; padding: 4px 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+@media (max-width: 560px) { .secpick-cols { grid-template-columns: 1fr; } }
+.modal.sec-modal .card { max-height: 92vh; overflow: auto; }

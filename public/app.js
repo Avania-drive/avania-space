@@ -653,6 +653,9 @@ async function clientView(id, tab) {
   const onlyFields = (skey, keys, title) => { const sec = partOf(formDef, skey, keys, title); return { ...sec, groups: sec.groups.map((g) => ({ ...g, title: '', intro: undefined, fields: g.fields.filter((f) => keys.includes(f.k)) })).filter((g) => g.fields.length) }; };
   function editClient() {
     const dataC = sections.clinica || (sections.clinica = {}), dataP = sections.proyecto || (sections.proyecto = {});
+    if (!dataC.nombre_comercial) dataC.nombre_comercial = client.name;   // por si la ficha aún no los tiene: se ve lo que hay en el listado
+    if (!dataP.categoria && client.category) dataP.categoria = client.category;
+    if (!dataC.ciudad && client.city) dataC.ciudad = client.city;
     const note = el('p', { class: 'muted', style: 'margin:0 0 10px' }, `Dado de alta el ${fmtDate(client.created_at, { dateStyle: 'long' })}. Los cambios se guardan al momento y se ven en toda la ficha y en el listado de clientes.`);
     const warn = el('p', { class: 'muted', style: 'margin:0 0 6px;font-size:13px' }, 'Cambiar la categoría cambia las secciones y los estados que corresponden a este cliente; no se borra nada de lo ya rellenado.');
     const body = el('div', { class: 'card', style: 'width:min(820px,94vw)' }, el('h2', { style: 'margin-top:0' }, 'Datos del cliente'), note,
@@ -660,7 +663,7 @@ async function clientView(id, tab) {
       warn,
       renderSection(onlyFields('proyecto', ['categoria', 'responsable_cuenta', 'fecha_firma', 'fecha_inicio', 'enlace_clickup', 'enlace_drive', 'funnels_location'], 'El proyecto'), dataP, { team: true, clientName: client.name, save: (p) => api('PUT', `/api/clients/${id}/sections/proyecto`, p) }),
       el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn', onclick: () => m.close() }, 'Listo')));
-    const m = openModal(body, { label: 'Datos del cliente', onClose: () => route() });
+    const m = openModal(body, { label: 'Datos del cliente', cls: 'client-modal', onClose: () => route() });
   }
   // Cronograma editable en el sitio: las fechas de los hitos se cambian aquí y se guardan al momento; abajo se añade una acción rápida.
   function liveTimeline(limit) {

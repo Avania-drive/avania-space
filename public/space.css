@@ -963,3 +963,8 @@ h1.editname:hover .editpen, h1.editname:focus-visible .editpen { opacity: 1; } h
 .phases-list .phtools .btn { padding-left: 9px; padding-right: 9px; display: inline-flex; align-items: center; justify-content: center; }
 .phases-list .phdel { width: 32px; padding: 0; }
 .phases-list select.stsel { height: 32px; }
+
+/* Modal «Datos del cliente»: ancho, con desplazamiento y sin cabeceras vacías */
+.modal.client-modal .card { width: min(820px, 94vw); max-width: none; max-height: 92vh; overflow: auto; }
+.client-modal .ghead { display: none; } .client-modal .card .card { border: 0; box-shadow: none; padding: 0; margin: 0 0 6px; }
+.client-modal .card label { margin: 0; font-weight: 500; }

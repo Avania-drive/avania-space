@@ -579,3 +579,6 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 
 ## 5-nov — Tareas: cruz roja para eliminar tareas y subtareas
 - La ✕ gris de cada tarea y subtarea pasa a ser un icono con **cruz blanca en círculo rojo** (`.phdel`). Al pulsarla pide confirmación («¿Eliminar «…» y sus N subtareas? No se puede deshacer.»); «Cancelar» no borra nada. Probado en Chromium: eliminar subtarea, cancelar y eliminar tarea.
+
+## 5-nov — Tareas hechas sin tachar
+- Las tareas, subtareas y acciones de «Fechas clave» marcadas como hechas ya no llevan el texto tachado (`public/space.css`); siguen en gris suave y con el estado «Hecho» en verde.

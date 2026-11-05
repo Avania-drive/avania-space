@@ -675,7 +675,7 @@ a.area:hover { background: var(--menu-hover); } a.area:focus-visible { outline: 
 .ph { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto auto; gap: 10px; align-items: center; padding: 7px 0; }
 .phitem { border-top: 1px solid var(--line); } .phitem:first-child { border-top: 0; }
 .phn { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--bg); color: var(--muted); }
-.ph.st-hecho .phn { background: var(--client); color: #fff; } .ph.st-hecho .phname { color: var(--muted); text-decoration: line-through; }
+.ph.st-hecho .phn { background: var(--client); color: #fff; } .ph.st-hecho .phname { color: var(--muted); }
 .ph.st-curso .phn, .ph.st-espera .phn { background: var(--accent); color: var(--accent-ink); } .ph.now .phname { font-weight: 600; }
 .phname { min-width: 0; } .phname small { display: block; color: var(--muted); font-size: 12.5px; font-weight: 400; } input.phname { width: 100%; }
 .phst { font-size: 12.5px; color: var(--muted); } .ph.st-espera .phst { color: var(--warn); font-weight: 600; } .ph.st-curso .phst { color: var(--accent); font-weight: 600; }
@@ -889,7 +889,7 @@ table.horario input[type=time].dim:focus { opacity: 1; }
 .phsubs { margin: 0 0 8px 36px; padding-left: 12px; border-left: 2px solid var(--line); display: grid; gap: 4px; min-width: 0; }
 .phsub-list { list-style: none; margin: 0; padding: 0; display: grid; }
 .phsub { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto auto; gap: 10px; align-items: center; padding: 4px 0; font-size: 13.5px; }
-.phsn { color: var(--muted); text-align: center; } .phsub.st-hecho .phname { color: var(--muted); text-decoration: line-through; }
+.phsn { color: var(--muted); text-align: center; } .phsub.st-hecho .phname { color: var(--muted); }
 .phsub-edit { grid-template-columns: 14px minmax(0, 1fr) auto !important; border-top: 1px solid var(--line); } .phsub-edit:first-child { border-top: 0; }
 .phsubadd { gap: 8px; flex-wrap: wrap; margin: 4px 0 0; }
 .phtools .btn.has { color: var(--accent); font-weight: 600; }
@@ -910,7 +910,7 @@ table.horario input[type=time].dim:focus { opacity: 1; }
 .timeline.editable li { position: relative; } .timeline .tdel { margin-left: auto; align-self: start; }
 .timeline li:has(.tdel) { grid-template-columns: 130px auto 1fr auto; align-items: center; }
 
-.timeline li.done .tlabel { color: var(--muted); text-decoration: line-through; } .timeline li.done time { color: var(--muted); }
+.timeline li.done .tlabel { color: var(--muted); } .timeline li.done time { color: var(--muted); }
 .tdone { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); cursor: pointer; white-space: nowrap; } .tdone input { width: auto; margin: 0; }
 .timeline li:has(.tdone) { grid-template-columns: 130px auto 1fr auto auto; }
 

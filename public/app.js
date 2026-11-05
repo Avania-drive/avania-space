@@ -315,7 +315,7 @@ async function clientsView() {
   const lead = el('p', { class: 'lead' }, nWaiting ? `Hoy hay ${nWaiting} cliente${nWaiting > 1 ? 's' : ''} esperando datos suyos.` : 'No hay clientes esperando datos.');
   const canBaja = me.role === 'super_admin' || me.role === 'admin';
   // Baja del cliente (solo en el panel de clientes): pide escribir «dar de baja». Archiva; no borra nada y se puede reactivar.
-  const bajaBtn = (c, cls = 'btn ghost small') => el('button', { type: 'button', class: cls, title: c.archived ? 'Volver a dar de alta' : 'Dar de baja a este cliente',
+  const bajaBtn = (c, cls = 'btn ghost small') => el('button', { type: 'button', class: cls, title: c.archived ? 'Volver a dar de alta' : 'Dar de baja a este cliente', 'aria-label': c.archived ? `Reactivar a ${c.name}` : `Dar de baja a ${c.name}`,
     onclick: async (e) => {
       e.preventDefault(); e.stopPropagation();
       const a = !c.archived;
@@ -323,7 +323,8 @@ async function clientsView() {
         : await askConfirm({ title: `Reactivar a «${c.name}»`, ok: 'Reactivar' });
       if (!okk) return;
       await api('PATCH', `/api/clients/${c.id}`, { archived: a }); toast(a ? 'Cliente dado de baja' : 'Cliente reactivado'); route();
-    } }, c.archived ? 'Reactivar' : 'Dar de baja');
+    } }, c.archived ? 'Reactivar' : trashIcon());
+  const trashIcon = () => { const i = el('span', { class: 'trash', 'aria-hidden': 'true' }); i.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v6M14 10v6"/></svg>'; return i; };
   const crow = (c) => el('a', { class: 'crow', href: `#/c/${c.id}` },
     el('span', { class: 'name' }, el('strong', {}, c.name), c.archived ? el('span', { class: 'pill' }, 'archivado') : '', c.status === 'activa' ? el('small', { class: 'muted' }, 'Campaña activa') : c.status === 'pausada' ? el('small', { class: 'muted' }, 'Pausada') : ''),
     gatesBar(c.gates),
@@ -648,6 +649,19 @@ async function clientView(id, tab) {
       el('tbody', {}, log.length ? log.map((l) => el('tr', {}, el('td', {}, fmtDate(l.at, { dateStyle: 'short', timeStyle: 'short' })), el('td', {}, l.actor), el('td', {}, l.action), el('td', {}, l.service || '—'))) : el('tr', {}, el('td', { colspan: 4, class: 'muted' }, 'Sin movimientos.'))))));
   }
 
+  // Datos básicos del cliente (nombre, ciudad, categoría, responsable, fechas y enlaces). Son los mismos campos de la ficha: se guardan al momento.
+  const onlyFields = (skey, keys, title) => { const sec = partOf(formDef, skey, keys, title); return { ...sec, groups: sec.groups.map((g) => ({ ...g, title: '', intro: undefined, fields: g.fields.filter((f) => keys.includes(f.k)) })).filter((g) => g.fields.length) }; };
+  function editClient() {
+    const dataC = sections.clinica || (sections.clinica = {}), dataP = sections.proyecto || (sections.proyecto = {});
+    const note = el('p', { class: 'muted', style: 'margin:0 0 10px' }, `Dado de alta el ${fmtDate(client.created_at, { dateStyle: 'long' })}. Los cambios se guardan al momento y se ven en toda la ficha y en el listado de clientes.`);
+    const warn = el('p', { class: 'muted', style: 'margin:0 0 6px;font-size:13px' }, 'Cambiar la categoría cambia las secciones y los estados que corresponden a este cliente; no se borra nada de lo ya rellenado.');
+    const body = el('div', { class: 'card', style: 'width:min(820px,94vw)' }, el('h2', { style: 'margin-top:0' }, 'Datos del cliente'), note,
+      renderSection(onlyFields('clinica', ['nombre_comercial', 'ciudad'], 'La empresa'), dataC, { team: true, clientName: client.name, save: (p) => api('PUT', `/api/clients/${id}/sections/clinica`, p) }),
+      warn,
+      renderSection(onlyFields('proyecto', ['categoria', 'responsable_cuenta', 'fecha_firma', 'fecha_inicio', 'enlace_clickup', 'enlace_drive', 'funnels_location'], 'El proyecto'), dataP, { team: true, clientName: client.name, save: (p) => api('PUT', `/api/clients/${id}/sections/proyecto`, p) }),
+      el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn', onclick: () => m.close() }, 'Listo')));
+    const m = openModal(body, { label: 'Datos del cliente', onClose: () => route() });
+  }
   // Cronograma editable en el sitio: las fechas de los hitos se cambian aquí y se guardan al momento; abajo se añade una acción rápida.
   function liveTimeline(limit) {
     const box = el('div');
@@ -743,7 +757,8 @@ async function clientView(id, tab) {
     : el('a', { class: 'appbtn off', href: `#/c/${id}/proyecto`, title: `Añadir el enlace de ${appName(app)}`, 'aria-label': `Añadir el enlace de ${appName(app)}` }, appIcon(app));
   view.replaceChildren(
     el('div', { class: 'row', style: 'margin-bottom:12px' },
-      el('a', { href: '#/', class: 'btn ghost small' }, '← Clientes'), logoButton(client, () => route()), el('h1', {}, client.name), client.category ? catPill(client.category, client.category_color) : '', el('span', { class: 'grow' }),
+      el('a', { href: '#/', class: 'btn ghost small' }, '← Clientes'), logoButton(client, () => route()), el('h1', { class: 'editname', tabindex: 0, role: 'button', title: 'Modificar los datos del cliente', onclick: () => editClient(), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); editClient(); } } }, client.name, el('span', { class: 'editpen', 'aria-hidden': 'true' }, '✎')),
+      client.category ? catPill(client.category, client.category_color) : '', el('span', { class: 'grow' }),
       // Accesos rápidos: botones pequeños con icono (el nombre sale al pasar el ratón y lo lee el lector de pantalla).
       canPreview ? iconBtn('ojo', 'Vista de cliente: ver esta ficha tal como la ve el cliente', { href: `#/c/${id}/${t.key}?vista=cliente`, cls: 'primary' }) : '',
       iconBtn('enlace', 'Copiar enlace del cliente', { onclick: () => navigator.clipboard.writeText(link).then(() => toast('Enlace del cliente copiado')) }),

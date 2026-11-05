@@ -949,3 +949,17 @@ select.stsel.st-hecho { background-color: #d1fae5; color: #047857; border-color:
 .phdel { width: 26px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: none; color: #dc2626; cursor: pointer; display: inline-grid; place-items: center; flex: none; }
 .phdel:hover { background: #fee2e2; border-color: #fecaca; } .phdel:focus-visible { outline: 3px solid rgba(220,38,38,.35); outline-offset: 1px; }
 .phdel .trash { display: grid; }
+
+/* Nombre del cliente: se pulsa para modificar sus datos */
+h1.editname { cursor: pointer; display: inline-flex; align-items: baseline; gap: 8px; border-radius: 8px; }
+h1.editname .editpen { font-size: 15px; color: var(--muted); opacity: 0; transition: opacity .15s; }
+h1.editname:hover .editpen, h1.editname:focus-visible .editpen { opacity: 1; } h1.editname:focus-visible { outline: 3px solid var(--ring, rgba(15,118,110,.35)); outline-offset: 3px; }
+@media (hover: none) { h1.editname .editpen { opacity: .6; } }
+.btn.small:has(> .trash) { color: #dc2626; padding: 4px 8px; min-width: 32px; } .btn.small:has(> .trash):hover { background: #fee2e2; border-color: #fecaca; } .btn:has(> .trash) .trash { display: grid; }
+
+/* Tareas: todos los controles de la misma altura (la de los más bajos) */
+.phases-list input.phname, .phases-list select, .phases-list input[type=date], .phases-list .phtools .btn, .phases-list .phdel, .phsubadd input, .phsubadd .btn,
+.phases > form input, .phases > form .btn { height: 32px; min-height: 32px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; font-size: 14px; line-height: 1; }
+.phases-list .phtools .btn { padding-left: 9px; padding-right: 9px; display: inline-flex; align-items: center; justify-content: center; }
+.phases-list .phdel { width: 32px; padding: 0; }
+.phases-list select.stsel { height: 32px; }

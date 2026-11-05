@@ -598,3 +598,8 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 ## 5-nov — Botón «Generar conclusiones» en Nuestros análisis
 - En cada pestaña (Avatares, Competencia, Ofertas) el campo de conclusiones tiene el botón **«Generar conclusiones con los resúmenes»**: la IA redacta 4-8 viñetas a partir de los resúmenes de las fichas de esa pestaña y de lo que el cliente contó en «Sus clientes, competencia y ofertas». Si ya hay texto, pide confirmación antes de sustituirlo. Se guarda en la ficha como cualquier otro campo y se puede corregir.
 - Servidor: `POST /api/clients/:id/conclusiones` (`src/index.js`) y `conclude()` en `src/ai.js` (usa solo lo que hay escrito; no inventa). Campo marcado con `concl` en `formdef.js`. Probado con la IA real en Chromium (cliente temporal, ya borrado).
+
+## 5-nov — Modal «Datos del cliente», papelera de baja y altura uniforme en Tareas
+- **Modificar el cliente:** al pulsar su nombre (cabecera de la ficha; sale un lápiz al pasar el ratón) se abre el modal «Datos del cliente»: nombre comercial, ciudad, **categoría** (con color y «nueva categoría»), responsable de cuenta, firma del contrato, inicio real, enlaces de ClickUp y Drive e ID de la subcuenta de Funnels, y arriba la fecha de alta. Son los mismos campos de la ficha (Empresa › Datos y Proyecto): se guardan al momento y se reflejan en el listado. Si el estado actual no existe en la categoría nueva, el cliente pasa al primero que sí (`saveSection`, `src/index.js`).
+- **Baja:** el botón «Dar de baja» del listado de clientes es ahora una papelera (roja), con la misma confirmación escribiendo «dar de baja».
+- **Tareas:** nombre, responsable, estado, fechas y botones miden todos 32 px de alto (la altura de los más bajos).

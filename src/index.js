@@ -346,6 +346,10 @@ async function saveSection(client, key, data, actor) {
     const cat = String(merged.categoria || '').trim().slice(0, 60) || null;
     if (cat) await q('insert into categories (name) values ($1) on conflict do nothing', [cat]);
     await q('update clients set category = $1 where id = $2', [cat, client.id]);
+    // Si el estado actual no existe en la categoría nueva, pasa al primero que sí (para no dejar al cliente en un estado que no le corresponde).
+    const st = cat ? (await q('select statuses from categories where name = $1', [cat])).rows[0] : null;
+    const valid = statusesOf(st?.statuses);
+    if (st && valid.length && !valid.includes(client.status)) await q('update clients set status = $1 where id = $2', [valid[0], client.id]);
   } else await q('update clients set updated_at = now() where id = $1', [client.id]);
   return merged;
 }

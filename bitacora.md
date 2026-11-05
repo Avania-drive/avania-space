@@ -603,3 +603,6 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 - **Modificar el cliente:** al pulsar su nombre (cabecera de la ficha; sale un lápiz al pasar el ratón) se abre el modal «Datos del cliente»: nombre comercial, ciudad, **categoría** (con color y «nueva categoría»), responsable de cuenta, firma del contrato, inicio real, enlaces de ClickUp y Drive e ID de la subcuenta de Funnels, y arriba la fecha de alta. Son los mismos campos de la ficha (Empresa › Datos y Proyecto): se guardan al momento y se reflejan en el listado. Si el estado actual no existe en la categoría nueva, el cliente pasa al primero que sí (`saveSection`, `src/index.js`).
 - **Baja:** el botón «Dar de baja» del listado de clientes es ahora una papelera (roja), con la misma confirmación escribiendo «dar de baja».
 - **Tareas:** nombre, responsable, estado, fechas y botones miden todos 32 px de alto (la altura de los más bajos).
+
+## 5-nov — Modales de cliente: mínimo 600 px
+- «Datos del cliente» (820 px), «Nuevo cliente» y «Nuevo cliente desde Avania Funnels» (640 px) ya no se quedan en los 400 px estándar de las ventanas pequeñas; el mínimo es 600 px (en móvil, el 94 % de la pantalla).

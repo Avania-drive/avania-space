@@ -410,7 +410,7 @@ function newClient() {
   } }, el('h2', {}, 'Nuevo cliente'),
   el('label', { for: 'nc-nombre' }, 'Nombre de la empresa'), name, el('label', { for: 'nc-ciudad', style: 'margin-top:10px' }, 'Ciudad (opcional)'), city, err,
   el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn ghost', onclick: () => d.close() }, 'Cancelar'), el('button', { class: 'btn' }, 'Crear cliente')));
-  const d = openModal(card, { label: 'Nuevo cliente' });
+  const d = openModal(card, { label: 'Nuevo cliente', cls: 'wide-modal' });
 }
 
 // Alta con el ID de la subcuenta del cliente en Avania Funnels (la que ya se ha creado para él).
@@ -447,7 +447,7 @@ function newFromFunnels() {
     el('label', { for: 'nf-ciudad', style: 'margin-top:10px' }, 'Ciudad (opcional)'), cityIn,
     el('label', { style: 'margin-top:10px' }, 'Categoría', catSel), err,
     el('div', { class: 'row', style: 'margin-top:12px' }, btn, el('button', { class: 'btn ghost', type: 'button', onclick: close }, 'Cancelar')));
-  const dlg = openModal(card, { label: 'Nuevo cliente desde Avania Funnels' });
+  const dlg = openModal(card, { label: 'Nuevo cliente desde Avania Funnels', cls: 'wide-modal' });
 }
 
 // Panel lateral con la vista previa de un documento de Google Drive (DOCX, PDF, Docs…).

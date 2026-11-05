@@ -968,3 +968,7 @@ h1.editname:hover .editpen, h1.editname:focus-visible .editpen { opacity: 1; } h
 .modal.client-modal .card { width: min(820px, 94vw); max-width: none; max-height: 92vh; overflow: auto; }
 .client-modal .ghead { display: none; } .client-modal .card .card { border: 0; box-shadow: none; padding: 0; margin: 0 0 6px; }
 .client-modal .card label { margin: 0; font-weight: 500; }
+
+/* Modales de cliente (alta, desde Funnels y modificación): nunca más estrechos de 600 px */
+.modal.wide-modal .card { width: min(640px, 94vw); max-width: none; }
+.modal.client-modal .card { min-width: min(600px, 94vw); }

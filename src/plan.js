@@ -115,8 +115,8 @@ export function timelineOf(sections, { now = today(), includeEmpty = false } = {
   if (fTxt) add(null, 'Formación del equipo (fechas propuestas por el cliente)', 'cliente', { section: 'formacion', note: fTxt });
   for (const f of fasesFlat(sections)) { const d = isoDate(f.fecha); if (d) add(d, f.fase, WHO[f.quien] || 'ambos', { section: 'proceso', done: f.estado === 'Hecho', note: [f.estado, f.responsable].filter(Boolean).join(' · '), fase: true }); }
   for (const [key, who] of [['acciones_avania', 'avania'], ['acciones_cliente', 'cliente']])
-    for (const r of g('cronograma')[key] || []) if (String(r?.accion || '').trim())
-      add(isoDate(r.fecha), String(r.accion).trim(), who, { section: 'cronograma', priority: norm(r.prioridad), done: /^hecha$/i.test(r.estado || ''), note: r.estado || '' });
+    (g('cronograma')[key] || []).forEach((r, i) => { if (String(r?.accion || '').trim())
+      add(isoDate(r.fecha), String(r.accion).trim(), who, { section: 'cronograma', priority: norm(r.prioridad), done: /^hecha$/i.test(r.estado || ''), note: r.estado || '', del: { key, i } }); });
   for (const it of items) it.past = !!it.date && it.date < now && !it.done;
   items.forEach((it, i) => { it.ord = i; });   // sin fecha, o con la misma, se respeta el orden lógico del proyecto
   return items.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999') || a.ord - b.ord);

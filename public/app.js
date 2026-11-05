@@ -657,7 +657,7 @@ async function clientView(id, tab) {
       try { await api('PUT', `/api/clients/${id}/sections/${section}`, { [key]: value }); (sections[section] ||= {})[key] = value; await refresh(); toast('Fecha guardada'); }
       catch (e) { toast(e.message); }
     };
-    const what = el('input', { placeholder: 'Nueva acción…', 'aria-label': 'Nueva acción', style: 'flex:1;min-width:180px' });
+    const what = el('input', { placeholder: 'Nueva acción…', 'aria-label': 'Nueva acción', style: 'flex:0 1 260px;min-width:160px' });
     const when = el('input', { type: 'date', ...DATE_ATTRS, 'aria-label': 'Fecha de la acción' });
     const who = el('select', { 'aria-label': 'Quién la hace' }, el('option', { value: 'acciones_avania' }, 'AVANIA'), el('option', { value: 'acciones_cliente' }, 'Cliente'));
     const add = async () => {
@@ -666,7 +666,18 @@ async function clientView(id, tab) {
       try { await api('PUT', `/api/clients/${id}/sections/cronograma`, { [key]: [...cur, { accion: what.value.trim(), fecha: when.value, prioridad: 'Media', estado: 'Pendiente' }] }); toast('Acción añadida'); route(); }
       catch (e) { toast(e.message); }
     };
-    const draw = () => box.replaceChildren(timelineNode(items, { limit, edit }),
+    const remove = async (t) => {
+      if (!(await askConfirm({ title: 'Eliminar acción', text: `¿Eliminar «${t.label}» de las fechas del proyecto?`, ok: 'Eliminar', danger: true }))) return;
+      const { key, i } = t.del, cur = ((sections.cronograma || {})[key] || []).filter((_, n) => n !== i);
+      try { await api('PUT', `/api/clients/${id}/sections/cronograma`, { [key]: cur }); (sections.cronograma ||= {})[key] = cur; await refresh(); toast('Acción eliminada'); }
+      catch (e) { toast(e.message); }
+    };
+    const toggle = async (t, done) => {
+      const { key, i } = t.del, cur = ((sections.cronograma || {})[key] || []).map((r, n) => (n === i ? { ...r, estado: done ? 'Hecha' : 'Pendiente' } : r));
+      try { await api('PUT', `/api/clients/${id}/sections/cronograma`, { [key]: cur }); (sections.cronograma ||= {})[key] = cur; await refresh(); toast(done ? 'Marcada como hecha' : 'Vuelve a estar pendiente'); }
+      catch (e) { toast(e.message); }
+    };
+    const draw = () => box.replaceChildren(timelineNode(items, { limit, edit, remove, toggle }),
       el('form', { class: 'row', style: 'margin-top:12px;gap:8px;flex-wrap:wrap', onsubmit: (e) => { e.preventDefault(); add(); } }, what, when, who, el('button', { class: 'btn small' }, '+ Añadir a las tareas')));
     draw();
     return box;

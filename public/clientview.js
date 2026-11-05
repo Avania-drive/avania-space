@@ -92,15 +92,17 @@ export function taskColumns(tasks, { href, mine = 'Del cliente', ours = 'De AVAN
 }
 
 /** Cronograma: fechas por orden, con quién actúa. Con `edit({section, key}, valor)` los hitos llevan un selector de fecha para cambiarla en el sitio. */
-export function timelineNode(items, { limit = 14, who = { cliente: 'Cliente', avania: 'AVANIA', ambos: 'Ambos' }, edit = null } = {}) {
-  const list = items.filter((t) => !t.done && (edit || t.date || !t.edit));
+export function timelineNode(items, { limit = 14, who = { cliente: 'Cliente', avania: 'AVANIA', ambos: 'Ambos' }, edit = null, remove = null, toggle = null } = {}) {
+  const list = items.filter((t) => (!t.done || toggle) && (edit || t.date || !t.edit));   // con `toggle` (agencia) también se ven las hechas, para poder desmarcarlas
   if (!list.length) return el('p', { class: 'muted', style: 'margin:0' }, 'Todavía no hay fechas clave. Se irán sumando con el rodaje, la formación y las acciones que se acuerden.');
-  return el('ol', { class: 'timeline' + (edit ? ' editable' : '') }, list.slice(0, limit).map((t) => el('li', { class: (t.past ? 'past ' : '') + (t.hito ? 'hito' : '') },
+  return el('ol', { class: 'timeline' + (edit ? ' editable' : '') }, list.slice(0, limit).map((t) => el('li', { class: (t.past ? 'past ' : '') + (t.hito ? 'hito ' : '') + (t.done ? 'done' : '') },
     edit && t.edit
       ? el('span', { class: 'tdate' }, el('input', { type: 'date', ...DATE_ATTRS, value: t.date || '', 'aria-label': `Fecha: ${t.label}`, onchange: (e) => { if (okDate(e.target.value)) edit(t.edit, e.target.value); } }))
       : el('time', {}, dateText(t.date)),
     el('span', { class: 'twho', 'data-who': t.who }, who[t.who] || t.who),
-    el('span', { class: 'tlabel' }, t.label, t.auto ? el('small', {}, 'Fecha calculada desde el inicio (sin contar fines de semana). Cámbiala si hace falta.') : '', t.note ? el('small', {}, String(t.note).slice(0, 140)) : ''))));
+    el('span', { class: 'tlabel' }, t.label, t.auto ? el('small', {}, 'Fecha calculada desde el inicio (sin contar fines de semana). Cámbiala si hace falta.') : '', t.note ? el('small', {}, String(t.note).slice(0, 140)) : ''),
+    toggle && t.del ? el('label', { class: 'tdone', title: t.done ? 'Marcada como hecha: pulsa para volver a ponerla pendiente' : 'Marcar como hecha' }, el('input', { type: 'checkbox', checked: t.done, 'aria-label': `Hecha: ${t.label}`, onchange: (e) => toggle(t, e.target.checked) }), 'Hecha') : '',
+    remove && t.del ? el('button', { type: 'button', class: 'btn ghost small tdel', title: 'Eliminar esta acción', 'aria-label': `Eliminar: ${t.label}`, onclick: () => remove(t) }, '✕') : '')));
 }
 
 /** Inicio del cliente: saludo, avance por áreas, tareas por prioridad, cronograma, herramientas, avisos y contacto. `request(link)` se llama al pedir acceso. */

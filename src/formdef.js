@@ -191,6 +191,8 @@ export const FORM = [
         { k: 'cms', label: 'Gestor de contenidos', hint: 'WordPress, Wix, Squarespace, desarrollo a medida...', type: 'text' },
         { k: 'resp_web', label: 'Responsable de la web', hint: 'Empresa o persona que la mantiene', type: 'text' },
         { k: 'resp_web_contacto', label: 'Correo y teléfono de esa persona', type: 'text' },
+        { k: 'privacidad', label: '¿Tenéis política de privacidad publicada?', type: 'tri' },
+        { k: 'privacidad_url', label: 'Enlace de la política de privacidad', hint: 'El enlace exacto, tal como aparece en vuestra web', type: 'url', showIf: { k: 'privacidad', v: 'Sí' } },
       ] },
       { title: '0.0 Otras redes y canales', intro: 'Enlaces a cualquier otro canal en el que estéis presentes.', fields: [
         { k: 'tiktok', label: 'TikTok', type: 'text' },
@@ -245,8 +247,6 @@ export const FORM = [
       ] },
       { title: '0.0 Píxel de seguimiento', intro: 'Sin este código instalado no podemos lanzar la campaña. Es lo primero que revisamos.', fields: [
         { k: 'pixel', label: '¿Tenéis ya píxel de Meta instalado?', type: 'tri' },
-        { k: 'privacidad', label: '¿Tenéis política de privacidad publicada?', type: 'tri' },
-        { k: 'privacidad_url', label: 'Enlace de la política de privacidad', hint: 'El enlace exacto, tal como aparece en vuestra web', type: 'url', showIf: { k: 'privacidad', v: 'Sí' } },
         { k: 'cookies', label: '¿Tenéis banner de cookies?', type: 'tri' },
       ] },
       { title: '6.3 Páginas y perfiles', fields: [
@@ -387,9 +387,9 @@ const LAYOUT = {
   zona: ['radio:4', 'localidades:4', 'zonas_excluir:4'],
   agenda: ['atienden:12', 'horario:12', 'cierres:12', 'huecos:6', 'duracion:6', 'horarios_primeras:12', 'antelacion:6', 'software_citas:6', 'fechas:12'],
   rodaje: ['doctor:6', 'cargo_doctor:6', 'ha_grabado:6', 'otros:6', 'dias_rodaje:7', 'franja:5', 'sala:5', 'ruido:5', 'fechas_rodaje:5', 'temas:12', 'guiones_url:12'],
-  accesos: ['dominio:6', 'hosting:6', 'cms:6', 'resp_web:6', 'resp_web_contacto:6', 'tiktok:6', 'linkedin:6', 'youtube:6', 'otros_canales:12'],
+  accesos: ['dominio:6', 'hosting:6', 'cms:6', 'resp_web:6', 'resp_web_contacto:6', 'privacidad:4', 'privacidad_url:8', 'tiktok:6', 'linkedin:6', 'youtube:6', 'otros_canales:12'],
   google: ['google_alta:6', 'google_quien:6', 'ga_enlace:6', 'gtm_id:6', 'gsc_enlace:6', 'gads_id:6', 'gmb_estado:4', 'gmb_enlace:8', 'gmb_verificada:4', 'gmb_acceso:4', 'gmb_categoria:4', 'gmb_resenas:4', 'gmb_valoracion:4', 'gmb_nombre:6', 'gmb_direccion:6', 'gmb_telefono:6', 'gmb_web:6'],
-  meta: ['bm_creado:4', 'bm_acceso:4', 'bm_id:4', 'ads_id:4', 'cuenta_pub:4', 'metodo_pago:4', 'presupuesto:4', 'campanas_previas:4', 'pixel:6', 'cookies:6', 'privacidad:4', 'privacidad_url:8',
+  meta: ['bm_creado:4', 'bm_acceso:4', 'bm_id:4', 'ads_id:4', 'cuenta_pub:4', 'metodo_pago:4', 'presupuesto:4', 'campanas_previas:4', 'pixel:6', 'cookies:6',
     'pagina_fb:6', 'perfil_ig:6', 'ig_profesional:6', 'ig_vinculado:6'],
   whatsapp: ['wa_business:6', 'wa_nuevo:6', 'wa_numero:6', 'grupo1:4', 'grupo2:4', 'grupo3:4', 'setex_numero:6', 'setex_enlace:6'],
   materiales: ['logos:12', 'colores:4', 'tipografias:4', 'tono:4', 'drive_materiales:12', 'subidos:6', 'faltan:6'],

@@ -504,7 +504,7 @@ async function clientView(id, tab) {
   if (canPreview && pvq.get('vista') === 'cliente') return clientPreview({ id, tab, client, views, sections, fd, dental, role: pvq.get('rol') === 'miembro' ? 'miembro' : 'responsable' });
   const link = `${location.origin}/f/${client.token}`;
   const pages = [{ key: 'plan', title: 'Tareas y próximas acciones', short: 'Tareas' }, { key: 'resultados', title: 'Resultados' }, { key: 'personas', title: 'Personas y equipo del cliente', short: 'Personas' }, { key: 'documentos', title: 'Documentos y notas', short: 'Documentos' }];
-  const topPages = pages.filter((x) => !['personas', 'documentos'].includes(x.key));   // Personas va en Empresa y Documentos en Enlaces
+  const topPages = pages.filter((x) => !['personas', 'documentos'].includes(x.key));   // Personas va en Empresa y Documentos en Accesos
   const tabs = [{ key: 'resumen', title: 'Resumen' }, ...pages, ...fd.form.map((s) => ({ key: s.key, title: `${s.num} ${s.title}`, short: s.short, sec: s })), { key: 'credenciales', title: 'Credenciales', short: 'Bóveda' }, { key: 'enlaces', title: 'Enlace del cliente', short: 'Enlace cliente' }, ...(me.can_see_passwords ? [{ key: 'registro', title: 'Registro de accesos', short: 'Registro' }] : [])];
   const t = tabs.find((x) => x.key === ({ equipo: 'personas', notas: 'documentos' }[tab] || tab)) || tabs[0];   // los enlaces antiguos a Equipo del cliente y Notas caen en su nueva pestaña
   const loc = String((sections.proyecto || {}).funnels_location || '').trim();

@@ -621,3 +621,6 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 - «¿Habéis hecho campañas antes?» (Meta › Cuenta publicitaria e inversión) pasa de texto libre a selector **Sí · No · No lo sé** (`sql/021`: los 3 valores que había, «Sí», «Si» y «ALGUN ANUNCIO », quedan como «Sí»; el texto libre de la clínica de Paula Fernández Riveiro se pierde, solo ponía «ALGUN ANUNCIO»).
 - «¿Tenéis política de privacidad publicada?» pasa a selector **Sí · No · No lo sé** y, **solo al contestar «Sí»**, aparece el campo «Enlace de la política de privacidad» (con botón «Abrir»). Campo nuevo `privacidad_url`; `sql/022` mueve la URL que tenía SEDI al campo nuevo y marca «Sí».
 - Mecanismo nuevo en `formdef.js`: `showIf: { k, v }` en un campo + `shown(f, data)`. El campo oculto no se enseña ni cuenta en el avance ni en las tareas pendientes (`progress`, `tasksOf`). Probado en Chromium (Sí muestra el enlace, No y No lo sé lo ocultan; los dos selectores se guardan).
+
+## 6-nov — «Enlaces» pasa a llamarse «Accesos»
+- El área 3 del menú y del resumen (antes «Enlaces» / «Enlaces técnicos») es ahora **«Accesos»** / «Accesos técnicos» (`BLOCKS` en `formdef.js`). Las secciones de dentro (Web y Google, Meta, WhatsApp, Contraseñas, Documentos) y la clave interna `tecnico` no cambian. «Enlace del cliente» (en Gestión) sigue igual.

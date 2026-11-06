@@ -329,7 +329,7 @@ const SHORT = {'clinica': 'Datos', 'zona': 'Área de influencia', 'agenda': 'Hor
 export const BLOCKS = [
   { key: 'empresa', title: 'La empresa y quién la forma', short: 'Empresa', sections: ['clinica', 'zona', 'agenda', 'materiales'] },
   { key: 'mercado', title: 'Sus clientes, competencia y ofertas', short: 'Análisis', sections: ['mercado', 'oferta', 'negocio'] },
-  { key: 'tecnico', title: 'Enlaces técnicos', short: 'Enlaces', sections: ['accesos', 'meta', 'whatsapp'] },
+  { key: 'tecnico', title: 'Accesos técnicos', short: 'Accesos', sections: ['accesos', 'meta', 'whatsapp'] },
   { key: 'cronograma', title: 'Fechas de acciones', short: 'Fechas', sections: ['cronograma', 'rodaje', 'formacion', 'cierre'] },
   { key: 'nosotros', title: 'Nosotros: AVANIA', short: 'Avania', sections: ['proyecto', 'avania'] },
 ];

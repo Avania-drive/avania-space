@@ -191,7 +191,7 @@ function shell() {
     el('div', { class: 'av-foot' },
       el('nav', { class: 'main-nav', 'aria-label': 'Administración de la agencia' }, el('div', { class: 'av-cap' }, 'Administración'), legend,
         me.role === 'super_admin' || me.role === 'admin' ? [link('#/boveda', 'boveda', 'Bóveda'), link('#/config', 'config', 'Configuración')] : '',
-        me.role === 'super_admin' ? link('#/equipo', 'equipo', 'Equipo agencia') : '', link('#/seguridad', 'seguridad', 'Seguridad')),
+        me.role === 'super_admin' || me.role === 'admin' ? link('#/equipo', 'equipo', 'Usuarios') : '', link('#/seguridad', 'seguridad', 'Seguridad')),
       el('a', { class: 'av-nav out', href: '#/', onclick: async (e) => { e.preventDefault(); await api('POST', '/api/logout'); me = null; document.body.classList.remove('av-open'); loginView(); } }, icon('salir'), el('span', {}, 'Salir'))));
   const skip = el('a', { class: 'skip', href: '#main', onclick: (e) => { e.preventDefault(); view.focus(); } }, 'Saltar al contenido');
   app.replaceChildren(skip, el('div', { class: 'av-app' }, side, el('div', { class: 'av-content' },
@@ -230,9 +230,9 @@ function route() {
   document.body.classList.remove('av-open');
   document.removeEventListener('keydown', clientsView.key);
   if (!h.startsWith('#/c/')) setSide(null);
-  document.querySelectorAll('.main-nav a').forEach((a) => a.classList.toggle('on', a.dataset.h === h || (a.dataset.h === '#/' && h.startsWith('#/c/'))));
+  document.querySelectorAll('.main-nav a').forEach((a) => a.classList.toggle('on', a.dataset.h === h || (a.dataset.h === '#/' && h.startsWith('#/c/')) || (a.dataset.h === '#/equipo' && h.startsWith('#/equipo'))));
   const [, a, b, c] = h.split('/');
-  const run = a === 'panel' ? panelView(view) : a === 'config' ? configView(view, formDef, me) : a === 'boveda' ? vaultView(view, { askCode }) : !a ? clientsView() : a === 'c' ? clientView(b, c || 'resumen') : a === 'equipo' ? teamView() : a === 'seguridad' ? securityView() : clientsView();
+  const run = a === 'panel' ? panelView(view) : a === 'config' ? configView(view, formDef, me) : a === 'boveda' ? vaultView(view, { askCode }) : !a ? clientsView() : a === 'c' ? clientView(b, c || 'resumen') : a === 'equipo' ? usersView(b) : a === 'seguridad' ? securityView() : clientsView();
   const moved = lastHash !== null && lastHash !== h; lastHash = h;
   Promise.resolve(run).then(() => {
     // Al cambiar de página el foco pasa al título, para que el lector de pantalla lo anuncie.
@@ -730,7 +730,7 @@ async function clientView(id, tab) {
       renderSection(onlyFields('clinica', ['nombre_comercial', 'ciudad'], 'La empresa'), dataC, { team: true, clientName: client.name, save: (p) => api('PUT', `/api/clients/${id}/sections/clinica`, p) }),
       warn,
       renderSection(onlyFields('proyecto', ['categoria', 'responsable_cuenta', 'fecha_firma', 'fecha_inicio', 'enlace_clickup', 'enlace_drive', 'funnels_location'], 'El proyecto'), dataP, { team: true, clientName: client.name, save: (p) => api('PUT', `/api/clients/${id}/sections/proyecto`, p) }),
-      ...(['super_admin', 'admin'].includes(me.role) ? [secEditor()] : []),
+      ...(['super_admin', 'admin'].includes(me.role) ? [secEditor(), assigneesBlock(id)] : []),
       el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn', onclick: () => m.close() }, 'Listo')));
     const m = openModal(body, { label: 'Datos del cliente', cls: 'client-modal', onClose: () => route() });
   }
@@ -936,12 +936,12 @@ function newUserDialog() {
     const d = openModal(card, { label: 'Nuevo usuario', onClose: (v) => resolve(v || null) });
   });
 }
-async function teamView() {
+async function teamView(box) {
   const { users } = await api('GET', '/api/users');
   const showTemp = (email, pw) => notice({ title: `Contraseña temporal de ${email}`, text: 'Cópiala ahora: no se vuelve a mostrar. Tendrá que cambiarla al entrar.', secret: pw });
   const act = async (u, body) => { const r = await api('PATCH', `/api/users/${u.id}`, body); if (r.temp_password) await showTemp(u.email, r.temp_password); route(); };
-  view.replaceChildren(
-    el('div', { class: 'row', style: 'margin-bottom:12px' }, el('h1', { class: 'grow' }, 'Equipo agencia'),
+  box.replaceChildren(
+    el('div', { class: 'row', style: 'margin-bottom:12px' }, el('h2', { class: 'grow', style: 'margin:0' }, 'Equipo de Avania'),
       el('button', { class: 'btn', onclick: async () => {
         const nu = await newUserDialog(); if (!nu) return;
         try {
@@ -952,19 +952,109 @@ async function teamView() {
         } catch (e) { toast(e.message); }
       } }, '+ Nuevo usuario')),
     me.mfa_enabled ? '' : el('div', { class: 'banner row' }, el('span', { class: 'grow' }, el('strong', {}, 'Tu doble verificación no está activa. '), 'Sin ella no puedes ver ni copiar contraseñas.'), el('button', { class: 'btn small', onclick: goMfa }, 'Activar doble verificación')),
-    el('p', { class: 'muted', style: 'margin:0 0 14px' }, el('strong', {}, 'Administrador'), ': ve y copia contraseñas (con doble verificación) y borra credenciales. ', el('strong', {}, 'Miembro'), ': trabaja con los clientes y puede añadir o editar credenciales, pero no ver las contraseñas.'),
+    el('p', { class: 'muted', style: 'margin:0 0 14px' }, el('strong', {}, 'Administrador'), ': ve todos los clientes, ve y copia contraseñas (con doble verificación) y borra credenciales. ', el('strong', {}, 'Miembro'), ': solo ve los clientes que tiene asignados y puede añadir o editar credenciales, pero no ver las contraseñas.'),
     el('div', { class: 'card teamlist' },
       el('div', { class: 'trow thead', 'aria-hidden': 'true' }, ['Usuario', 'Rol', 'Doble verificación', 'Estado', ''].map((h) => el('span', {}, h))),
       users.map((u) => el('div', { class: 'trow' },
-        el('div', { class: 'tuser' }, el('span', { class: 'uav', 'aria-hidden': 'true' }, (u.name || u.email)[0].toUpperCase()), el('div', {}, el('strong', {}, u.name || u.email), el('div', { class: 'muted' }, u.email))),
+        el('div', { class: 'tuser' }, el('span', { class: 'uav', 'aria-hidden': 'true' }, (u.name || u.email)[0].toUpperCase()), el('div', {}, el('strong', {}, u.name || u.email), el('div', { class: 'muted' }, u.email, u.role === 'member' ? ` · ${u.n_clients} ${u.n_clients === 1 ? 'cliente' : 'clientes'}` : u.role === 'admin' ? ' · ve todos los clientes' : ''))),
         el('div', { class: 'tcell', 'data-l': 'Rol' }, u.role === 'super_admin' ? ROLE.super_admin : el('select', { 'aria-label': `Rol de ${u.name || u.email}`, onchange: (e) => act(u, { role: e.target.value }) }, ['admin', 'member'].map((r) => el('option', { value: r, selected: u.role === r }, ROLE[r])))),
         el('div', { class: 'tcell', 'data-l': 'Doble verificación' }, u.totp_enabled || u.n_passkeys ? el('span', { class: 'pill ok' }, u.n_passkeys ? (u.totp_enabled ? 'app + llave' : 'llave') : 'activa') : el('span', { class: 'pill warn' }, 'sin activar')),
         el('div', { class: 'tcell', 'data-l': 'Estado' }, u.active ? el('span', { class: 'pill ok' }, 'activo') : el('span', { class: 'pill bad' }, 'desactivado')),
         el('div', { class: 'tacts' }, !u.totp_enabled && !u.n_passkeys && u.email === me.email ? el('button', { class: 'btn small', onclick: goMfa }, 'Activar doble verificación') : '', u.role === 'super_admin' ? '' : [
+          u.role === 'member' ? el('button', { class: 'btn small', onclick: () => assignDialog(u) }, 'Clientes') : '',
           u.must_change_password ? el('button', { class: 'btn ghost small', onclick: async () => { const r = await api('PATCH', `/api/users/${u.id}`, { resend_invite: true }); toast(r.invite === 'sent' ? `Correo enviado a ${u.email}` : `No se ha podido enviar: ${r.invite}`); } }, 'Reenviar acceso') : '',
           el('button', { class: 'btn ghost small', onclick: async () => (await askConfirm({ title: 'Nueva contraseña temporal', text: 'Se generará una contraseña temporal y se mostrará una sola vez.', ok: 'Generar contraseña' })) && act(u, { reset_password: true }) }, 'Nueva contraseña'),
           u.totp_enabled || u.n_passkeys ? el('button', { class: 'btn ghost small', onclick: async () => (await askConfirm({ title: 'Reiniciar doble verificación', text: '¿Quitar su doble verificación? Tendrá que configurarla de nuevo.', ok: 'Reiniciar', danger: true })) && act(u, { reset_mfa: true }) }, 'Reiniciar 2FA') : '',
           el('button', { class: 'btn ghost small', onclick: () => act(u, { active: !u.active }) }, u.active ? 'Desactivar' : 'Activar')])))));
+}
+
+
+// ───────── Usuarios: equipo de Avania, personas de los clientes y actividad ─────────
+async function usersView(tab) {
+  const lead = me.role === 'super_admin';
+  const tabs = [...(lead ? [['equipo', 'Equipo de Avania']] : []), ['clientes', 'Clientes'], ...(lead ? [['actividad', 'Actividad']] : [])];
+  const cur = tabs.some(([k]) => k === tab) ? tab : tabs[0][0];
+  const box = el('div');
+  view.replaceChildren(el('h1', { style: 'margin-bottom:12px' }, 'Usuarios'),
+    el('div', { class: 'subtabs', role: 'group', 'aria-label': 'Usuarios' }, tabs.map(([k, l]) => el('a', { class: 'subtab' + (k === cur ? ' on' : ''), href: `#/equipo/${k}`, 'aria-current': k === cur ? 'page' : null }, l))), box);
+  try { await ({ equipo: teamView, clientes: peopleTab, actividad: auditTab }[cur])(box); } catch (e) { box.replaceChildren(el('p', { class: 'err', role: 'alert' }, e.message)); }
+}
+const lastSeen = (d) => (d ? fmtDate(d, { dateStyle: 'medium' }) : '—');
+async function peopleTab(box) {
+  const { people } = await api('GET', '/api/people');
+  const list = el('div', { class: 'card teamlist' });
+  const q = el('input', { type: 'search', placeholder: 'Buscar por nombre, correo o cliente…', 'aria-label': 'Buscar personas', style: 'flex:1 1 260px;min-width:200px' });
+  const clientSel = el('select', { 'aria-label': 'Filtrar por cliente' }, el('option', { value: '' }, 'Todos los clientes'),
+    [...new Map(people.map((p) => [p.client_id, p.client_name])).entries()].map(([id, n]) => el('option', { value: id }, n)));
+  const roleSel = el('select', { 'aria-label': 'Filtrar por rol' }, el('option', { value: '' }, 'Todos los roles'), el('option', { value: 'responsable' }, 'Responsables'), el('option', { value: 'miembro' }, 'Miembros'));
+  const act = async (p, body) => { try { const r = await api('PATCH', `/api/client-users/${p.id}`, body); if (body.resend_invite) toast(r.invite === 'sent' ? `Correo enviado a ${p.email}` : `No se ha podido enviar: ${r.invite}`); else { Object.assign(p, body); draw(); } } catch (e) { toast(e.message); } };
+  const draw = () => {
+    const t = q.value.trim().toLowerCase();
+    const rows = people.filter((p) => (!clientSel.value || p.client_id === clientSel.value) && (!roleSel.value || p.role === roleSel.value)
+      && (!t || [p.name, p.email, p.client_name].some((x) => String(x || '').toLowerCase().includes(t))));
+    list.replaceChildren(el('div', { class: 'trow prow thead', 'aria-hidden': 'true' }, ['Persona', 'Cliente', 'Rol', 'Estado', 'Último acceso', ''].map((h) => el('span', {}, h))),
+      ...(rows.length ? rows.map((p) => el('div', { class: 'trow prow' },
+        el('div', { class: 'tuser' }, el('span', { class: 'uav', 'aria-hidden': 'true' }, (p.name || p.email)[0].toUpperCase()), el('div', {}, el('strong', {}, p.name || p.email), el('div', { class: 'muted' }, p.email))),
+        el('div', { class: 'tcell', 'data-l': 'Cliente' }, el('a', { href: `#/c/${p.client_id}/personas` }, p.client_name)),
+        el('div', { class: 'tcell', 'data-l': 'Rol' }, p.role === 'responsable' ? 'Responsable' : 'Miembro'),
+        el('div', { class: 'tcell', 'data-l': 'Estado' }, !p.active ? el('span', { class: 'pill bad' }, 'desactivado') : p.pending ? el('span', { class: 'pill warn' }, 'invitación pendiente') : el('span', { class: 'pill ok' }, 'activo')),
+        el("div", { class: "tcell", "data-l": "Último acceso" }, lastSeen(p.last_login)),
+        el('div', { class: 'tacts' }, p.pending && p.active ? el('button', { class: 'btn ghost small', onclick: () => act(p, { resend_invite: true }) }, 'Reenviar acceso') : '',
+          el('button', { class: 'btn ghost small', onclick: async () => (p.active ? await askConfirm({ title: 'Desactivar acceso', text: `${p.email} dejará de poder entrar al portal de ${p.client_name}.`, ok: 'Desactivar', danger: true }) : true) && act(p, { active: !p.active }) }, p.active ? 'Desactivar' : 'Activar'))))
+        : [el('p', { class: 'muted', style: 'padding:16px 18px;margin:0' }, 'No hay personas con esos filtros.')]));
+  };
+  [q, clientSel, roleSel].forEach((x) => x.addEventListener('input', draw));
+  box.replaceChildren(el('p', { class: 'muted', style: 'margin:0 0 12px' }, `${people.length} ${people.length === 1 ? 'persona' : 'personas'} con acceso al portal de sus clientes. Cada responsable gestiona a su equipo desde «Mi equipo»; aquí lo ves todo junto. Para dar de alta a alguien, hazlo en la ficha del cliente, en Personas.`),
+    el('div', { class: 'row', style: 'margin-bottom:12px;flex-wrap:wrap' }, q, clientSel, roleSel), list);
+  draw();
+}
+async function auditTab(box) {
+  const { log } = await api('GET', '/api/audit?limit=300');
+  box.replaceChildren(el('p', { class: 'muted', style: 'margin:0 0 12px' }, 'Quién ha creado, desactivado o cambiado a quién, y a qué clientes se ha asignado cada miembro. Los últimos 300 movimientos.'),
+    el('div', { class: 'card teamlist' }, log.length ? log.map((r) => el('div', { class: 'trow arow' },
+      el('span', { class: 'muted' }, fmtDate(r.at, { dateStyle: 'medium', timeStyle: 'short' })),
+      el('div', {}, el('strong', {}, r.action), r.target ? ` · ${r.target}` : '', r.detail ? el('div', { class: 'muted' }, r.detail) : ''),
+      el('span', {}, r.client_name ? el('a', { href: `#/c/${r.client_id}` }, r.client_name) : '—'),
+      el('span', { class: 'muted' }, r.actor || 'sistema', r.actor_kind === 'cliente' ? ' (cliente)' : ''))) : el('p', { class: 'muted', style: 'padding:16px 18px;margin:0' }, 'Todavía no hay movimientos.')));
+}
+// Clientes de un miembro del equipo: solo ve los marcados.
+async function assignDialog(u) {
+  const { clients } = await api('GET', `/api/users/${u.id}/clients`);
+  const sel = new Set(clients.filter((c) => c.assigned).map((c) => c.id));
+  const count = el('span', { class: 'muted' });
+  const filter = el('input', { type: 'search', placeholder: 'Buscar cliente…', 'aria-label': 'Buscar cliente' });
+  const list = el('div', { class: 'assignlist' });
+  const draw = () => {
+    const t = filter.value.trim().toLowerCase();
+    list.replaceChildren(...clients.filter((c) => !t || c.name.toLowerCase().includes(t)).map((c) => el('label', { class: 'check' },
+      el('input', { type: 'checkbox', checked: sel.has(c.id), onchange: (e) => { e.target.checked ? sel.add(c.id) : sel.delete(c.id); count.textContent = `${sel.size} marcados`; } }),
+      el('span', {}, c.name, c.archived ? el('span', { class: 'muted' }, ' · archivado') : ''))));
+    count.textContent = `${sel.size} marcados`;
+  };
+  filter.addEventListener('input', draw);
+  const setAll = (on) => { const t = filter.value.trim().toLowerCase(); clients.filter((c) => !c.archived && (!t || c.name.toLowerCase().includes(t))).forEach((c) => (on ? sel.add(c.id) : sel.delete(c.id))); draw(); };
+  const body = el('div', { class: 'card', style: 'width:min(560px,94vw)' }, el('h2', { style: 'margin-top:0' }, `Clientes de ${u.name || u.email}`),
+    el('p', { class: 'muted', style: 'margin:0 0 10px' }, 'Solo verá, y solo podrá abrir, los clientes marcados. Lo que cree él mismo se le asigna solo.'),
+    el('div', { class: 'row', style: 'gap:8px;margin-bottom:8px' }, filter, el('button', { type: 'button', class: 'btn ghost small', onclick: () => setAll(true) }, 'Todos'), el('button', { type: 'button', class: 'btn ghost small', onclick: () => setAll(false) }, 'Ninguno')),
+    list, el('div', { class: 'row', style: 'margin-top:12px' }, count, el('span', { class: 'grow' }),
+      el('button', { type: 'button', class: 'btn ghost', onclick: () => m.close() }, 'Cancelar'),
+      el('button', { type: 'button', class: 'btn', onclick: async () => { try { await api('PUT', `/api/users/${u.id}/clients`, { client_ids: [...sel] }); toast('Clientes guardados'); m.close(); route(); } catch (e) { toast(e.message); } } }, 'Guardar')));
+  const m = openModal(body, { label: `Clientes de ${u.name || u.email}` });
+  draw();
+}
+// Equipo de Avania asignado a un cliente (en la ficha del cliente). Se guarda al marcar.
+function assigneesBlock(clientId) {
+  const box = el('div', { class: 'assignees', style: 'margin-top:14px' });
+  (async () => {
+    const { users } = await api('GET', `/api/clients/${clientId}/assignees`);
+    const sel = new Set(users.filter((x) => x.assigned).map((x) => x.id));
+    box.replaceChildren(el('h3', { style: 'margin:0 0 4px;font-size:15px' }, 'Equipo de Avania con acceso'),
+      el('p', { class: 'muted', style: 'margin:0 0 8px;font-size:13px' }, 'Los miembros solo ven los clientes que tienen asignados. Los administradores ven todos.'),
+      el('div', { class: 'assignlist short' }, users.map((x) => el('label', { class: 'check' },
+        el('input', { type: 'checkbox', checked: x.role === 'admin' || sel.has(x.id), disabled: x.role === 'admin', onchange: async (e) => { e.target.checked ? sel.add(x.id) : sel.delete(x.id); try { await api('PUT', `/api/clients/${clientId}/assignees`, { user_ids: [...sel] }); toast('Equipo guardado'); } catch (err) { toast(err.message); } } }),
+        el('span', {}, x.name || x.email, el('span', { class: 'muted' }, x.role === 'admin' ? ' · administrador (ve todos)' : ' · miembro'))))));
+  })().catch((e) => box.replaceChildren(el('p', { class: 'err' }, e.message)));
+  return box;
 }
 
 // ───────── Seguridad ─────────

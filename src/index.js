@@ -26,6 +26,8 @@ import { buildReport, REPORT_TO } from './report.js';
 import { zonaStudy } from './zona.js';
 import { loadClientSession, portalGate, mountPortal } from './portal.js';
 import { mountVault } from './vault.js';
+import { scopeMiddleware, allowedClients, assignCreator, mountPeople } from './people.js';
+import { audit } from './audit.js';
 import { mountKpis, syncStages, forget as forgetKpis } from './kpis.js';
 
 const app = express();
@@ -53,6 +55,8 @@ app.use((req, res, next) => {
 });
 app.use(wrap(loadSession));
 app.use(wrap(loadClientSession));
+// Los miembros del equipo solo trabajan con los clientes que tienen asignados.
+app.use('/api', scopeMiddleware(wrap));
 
 const ip = (req) => req.ip || 'x';
 const tempPassword = () => randomToken(9);
@@ -237,7 +241,7 @@ app.post('/api/mfa/passkey/verify', requireUser, requireReady, wrap(async (req, 
 }));
 
 app.get('/api/users', ...staff, requireRole('super_admin'), wrap(async (_req, res) => {
-  const r = await q('select id, email, name, role, active, totp_enabled, (select count(*)::int from passkeys p where p.user_id = team_users.id) n_passkeys, must_change_password, created_at from team_users order by created_at');
+  const r = await q('select id, email, name, role, active, totp_enabled, (select count(*)::int from passkeys p where p.user_id = team_users.id) n_passkeys, (select count(*)::int from client_assignments a where a.user_id = team_users.id) n_clients, must_change_password, created_at from team_users order by created_at');
   res.json({ users: r.rows });
 }));
 
@@ -256,6 +260,7 @@ app.post('/api/users', ...staff, requireRole('super_admin'), wrap(async (req, re
   }
   // Correo de alta con el enlace para elegir contraseña. Si no sale, se devuelve la contraseña temporal para dársela a mano.
   const created = (await q('select id, email, name from team_users where email = $1', [email])).rows[0];
+  await audit(req.user.email, 'crear usuario del equipo', { target: email, detail: role });
   let emailError = null;
   try { await sendInvite(created); } catch (e) { emailError = e.message; console.error(`[email] alta de ${email}: ${e.message}`); }
   res.json(emailError ? { ok: true, email_sent: false, email_error: emailError, temp_password: temp } : { ok: true, email_sent: true });
@@ -289,6 +294,8 @@ app.patch('/api/users/:id', ...staff, requireRole('super_admin'), wrap(async (re
     await q('delete from passkeys where user_id = $1', [t.id]);
     await q('update sessions set mfa_until = null where user_id = $1', [t.id]);
   }
+  const did = [req.body.role && t.role !== 'super_admin' && req.body.role !== t.role ? `rol ${t.role} → ${req.body.role}` : '', typeof req.body.active === 'boolean' && req.body.active !== t.active ? (req.body.active ? 'activado' : 'desactivado') : '', req.body.reset_password ? 'nueva contraseña' : '', req.body.reset_mfa ? 'reinicio de 2FA' : '', req.body.resend_invite ? 'reenvío de acceso' : ''].filter(Boolean).join(', ');
+  if (did) await audit(req.user.email, 'modificar usuario del equipo', { target: t.email, detail: did });
   res.json({ ok: true, temp_password: temp, invite });
 }));
 
@@ -389,9 +396,10 @@ app.post('/api/categories', ...staff, wrap(async (req, res) => {
 }));
 
 
-app.get('/api/clients', ...staff, wrap(async (_req, res) => {
+app.get('/api/clients', ...staff, wrap(async (req, res) => {
+  const mine = await allowedClients(req.user);
   const [cl, secs, creds] = await Promise.all([
-    q('select c.*, (select extract(epoch from l.updated_at)::bigint from client_logos l where l.client_id = c.id) logo_v, cat.color category_color, cat.sections category_sections, cat.statuses category_statuses from clients c left join categories cat on cat.name = c.category order by c.archived, c.name'),
+    q('select c.*, (select extract(epoch from l.updated_at)::bigint from client_logos l where l.client_id = c.id) logo_v, cat.color category_color, cat.sections category_sections, cat.statuses category_statuses from clients c left join categories cat on cat.name = c.category where ($1::uuid[] is null or c.id = any($1::uuid[])) order by c.archived, c.name', [mine]),
     q('select client_id, section, data, updated_at from client_sections'),
     q('select client_id, status, count(*)::int n from credentials group by 1, 2'),
   ]);
@@ -415,6 +423,7 @@ app.post('/api/clients', ...staff, wrap(async (req, res) => {
   const r = await q('insert into clients (name, token, city, sections) values ($1,$2,$3,$4) returning *',
     [name, randomToken(24), String(req.body.city || '').slice(0, 120) || null, cleanSections(req.body.sections)]);
   const c = r.rows[0];
+  await assignCreator(req.user, c.id);
   await saveSection(c, 'clinica', { nombre_comercial: name, ...(c.city ? { ciudad: c.city } : {}) }, req.user.email);
   const cat0 = String(req.body.category || '').trim().slice(0, 60);
   if (cat0) { await q('insert into categories (name) values ($1) on conflict do nothing', [cat0]); await saveSection(c, 'proyecto', { categoria: cat0 }, req.user.email); }
@@ -447,7 +456,7 @@ async function createFromFunnels({ location, name, category, city, sections, by 
 app.post('/api/clients/from-funnels', ...staff, wrap(async (req, res) => {
   const category = String(req.body.category || '').trim();
   if (!category) return res.status(400).json({ error: 'Elige la categoría.' });
-  try { res.json({ client: await createFromFunnels({ location: req.body.locationId, name: req.body.name, category, city: req.body.city, sections: req.body.sections, by: req.user.email }) }); }
+  try { const cf = await createFromFunnels({ location: req.body.locationId, name: req.body.name, category, city: req.body.city, sections: req.body.sections, by: req.user.email }); if (cf?.id) await assignCreator(req.user, cf.id); res.json({ client: cf }); }
   catch (e) { if (e.status === 400 || e.status === 409) return res.status(e.status).json({ error: e.message, ...(e.id ? { id: e.id } : {}) }); throw e; }
 }));
 
@@ -707,9 +716,10 @@ app.delete('/api/links/:id', ...staff, wrap(async (req, res) => {
 }));
 
 // ───────── Panel general ─────────
-app.get('/api/dashboard', ...staff, wrap(async (_req, res) => {
+app.get('/api/dashboard', ...staff, wrap(async (req, res) => {
+  const mine = await allowedClients(req.user);
   const [cl, secs, creds, cats] = await Promise.all([
-    q('select c.id, c.name, c.category, c.sections, c.status, c.start_date, c.created_at from clients c where not c.archived'),
+    q('select c.id, c.name, c.category, c.sections, c.status, c.start_date, c.created_at from clients c where not c.archived and ($1::uuid[] is null or c.id = any($1::uuid[]))', [mine]),
     q('select client_id, section, data from client_sections'),
     q("select client_id, count(*)::int n from credentials where status = 'pendiente' group by 1"),
     q('select name, color, sections from categories'),
@@ -1099,6 +1109,7 @@ app.post('/api/clients/:id/load-agency-people', ...staff, wrap(async (req, res) 
 }));
 
 // ───────── Portal del cliente y Bóveda ─────────
+mountPeople(app, { wrap, staff });
 mountPortal(app, { wrap, isUuid, ip, staff, sectionsOf, progress, gates, templateOf, tasksOf, timelineOf, fasesOf, forClientProgress, forClientTasks });
 mountVault(app, { wrap, isUuid, staff, log });
 mountKpis(app, { wrap, isUuid, staff, log, sectionsOf, saveSection });

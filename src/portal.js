@@ -9,6 +9,8 @@ import { kpisFor } from './kpis.js';
 import { viewOn, viewMap, denyView, TEAM_ONLY } from './visibility.js';
 import { zonaStudy } from './zona.js';
 import { FORM } from './formdef.js';
+import { audit } from './audit.js';
+import { allowedClients } from './people.js';
 
 export const CCOOKIE = 'sp_client';
 const DAYS = 14;
@@ -211,22 +213,23 @@ export function mountPortal(app, d) {
   app.post('/api/p/team', ...portal, responsable, wrap(async (req, res) => {
     const email = String(req.body.email || '').trim().toLowerCase();
     if (!EMAIL.test(email)) return res.status(400).json({ error: 'Correo no válido' });
-    res.json(await createClientUser(req.client, email, req.body.name, 'miembro', req.cu.email));
+    res.json(await createClientUser(req.client, email, req.body.name, 'miembro', req.cu.email, 'cliente'));
   }));
   app.patch('/api/p/team/:id', ...portal, responsable, wrap(async (req, res) => {
     if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Id no válido' });
     const u = (await q('select * from client_users where id = $1 and client_id = $2', [req.params.id, req.client.id])).rows[0];
     if (!u) return res.status(404).json({ error: 'No existe' });
     if (u.role !== 'miembro') return res.status(403).json({ error: 'Los responsables los gestiona AVANIA' });
-    res.json(await updateClientUser(u, req.body, req.client.name));
+    res.json(await updateClientUser(u, req.body, req.client.name, req.cu.email, 'cliente'));
   }));
   app.delete('/api/p/team/:id', ...portal, responsable, wrap(async (req, res) => {
     if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Id no válido' });
-    await q("delete from client_users where id = $1 and client_id = $2 and role = 'miembro'", [req.params.id, req.client.id]);
+    const gone = (await q("delete from client_users where id = $1 and client_id = $2 and role = 'miembro' returning email", [req.params.id, req.client.id])).rows[0];
+    if (gone) await audit(req.cu.email, 'eliminar usuario de cliente', { kind: 'cliente', client: req.client, target: gone.email });
     res.json({ ok: true });
   }));
 
-  async function createClientUser(client, email, name, role, by) {
+  async function createClientUser(client, email, name, role, by, kind = 'equipo') {
     if ((await q('select count(*)::int n from client_users where client_id = $1', [client.id])).rows[0].n >= MAX_USERS) return { error: 'Demasiados usuarios en este cliente', status: 400 };
     let u;
     try {
@@ -235,11 +238,14 @@ export function mountPortal(app, d) {
       if (e.code === '23505') return { error: 'Ese correo ya tiene un acceso al portal', status: 409 };
       throw e;
     }
+    await audit(by, 'crear usuario de cliente', { kind, client, target: email, detail: role });
     let emailError = null;
     try { await sendClientInvite(u, client.name); } catch (e) { emailError = e.message; console.error(`[email] alta de cliente ${email}: ${e.message}`); }
     return { user: userOut(u), email_sent: !emailError, email_error: emailError };
   }
-  async function updateClientUser(u, b, clientName) {
+  async function updateClientUser(u, b, clientName, by, kind = 'equipo') {
+    const did = [typeof b.active === 'boolean' && b.active !== u.active ? (b.active ? 'activado' : 'desactivado') : '', b.resend_invite ? 'reenvío de acceso' : ''].filter(Boolean).join(', ');
+    if (did) await audit(by, 'modificar usuario de cliente', { kind, client: u.client_id, target: u.email, detail: did });
     if (typeof b.active === 'boolean') {
       await q('update client_users set active = $1 where id = $2', [b.active, u.id]);
       if (!b.active) await q('delete from client_sessions where user_id = $1', [u.id]);
@@ -266,24 +272,26 @@ export function mountPortal(app, d) {
     const email = String(req.body.email || '').trim().toLowerCase();
     if (!EMAIL.test(email)) return res.status(400).json({ error: 'Correo no válido' });
     if (!['responsable', 'miembro'].includes(req.body.role)) return res.status(400).json({ error: 'Rol no válido' });
-    answer(res, await createClientUser(c, email, req.body.name, req.body.role, req.user.email));
+    answer(res, await createClientUser(c, email, req.body.name, req.body.role, req.user.email, 'equipo'));
   }));
   app.patch('/api/client-users/:id', ...staff, wrap(async (req, res) => {
     if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Id no válido' });
     const u = (await q('select u.*, c.name client_name from client_users u join clients c on c.id = u.client_id where u.id = $1', [req.params.id])).rows[0];
     if (!u) return res.status(404).json({ error: 'No existe' });
-    if (['responsable', 'miembro'].includes(req.body.role) && req.body.role !== u.role) await q('update client_users set role = $1 where id = $2', [req.body.role, u.id]);
-    answer(res, await updateClientUser(u, req.body, u.client_name));
+    if (['responsable', 'miembro'].includes(req.body.role) && req.body.role !== u.role) { await q('update client_users set role = $1 where id = $2', [req.body.role, u.id]); await audit(req.user.email, 'modificar usuario de cliente', { client: u.client_id, target: u.email, detail: `rol ${u.role} → ${req.body.role}` }); }
+    answer(res, await updateClientUser(u, req.body, u.client_name, req.user.email, 'equipo'));
   }));
   app.delete('/api/client-users/:id', ...staff, wrap(async (req, res) => {
     if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Id no válido' });
-    await q('delete from client_users where id = $1', [req.params.id]);
+    const gone = (await q('delete from client_users where id = $1 returning email, client_id', [req.params.id])).rows[0];
+    if (gone) await audit(req.user.email, 'eliminar usuario de cliente', { client: gone.client_id, target: gone.email });
     res.json({ ok: true });
   }));
 
-  app.get('/api/access-requests', ...staff, wrap(async (_req, res) => {
+  app.get('/api/access-requests', ...staff, wrap(async (req, res) => {
+    const mine = await allowedClients(req.user);
     res.json({ requests: (await q(`select r.id, r.client_id, c.name client_name, r.link_type, r.requested_by, r.created_at from access_requests r
-      join clients c on c.id = r.client_id where r.status = 'pendiente' and not c.archived order by r.created_at`)).rows });
+      join clients c on c.id = r.client_id where r.status = 'pendiente' and not c.archived and ($1::uuid[] is null or c.id = any($1::uuid[])) order by r.created_at`, [mine])).rows });
   }));
   app.patch('/api/access-requests/:id', ...staff, wrap(async (req, res) => {
     if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Id no válido' });

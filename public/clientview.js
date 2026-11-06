@@ -84,7 +84,7 @@ export function phasesNode(fases, { edit = null, viewer = 'agencia', team = [] }
       el('div', { class: 'row', style: 'margin-bottom:8px' }, el('strong', { class: 'grow' }, `${done} de ${rows.length} tareas hechas`), el('span', { class: 'num' }, `${pct}%`)), bar(pct, 'client'),
       el('ol', { class: 'phases-list' }, rows.map(item)),
       edit ? el('form', { class: 'row', style: 'margin-top:10px;gap:8px;flex-wrap:wrap', onsubmit: (e) => { e.preventDefault(); if (!newName.value.trim()) return; rows.push({ fase: newName.value.trim(), quien: 'AVANIA', estado: 'Pendiente', responsable: '', inicio: '', fecha: '', nota: '', sub: [] }); save(); } },
-        newName, el('button', { class: 'btn small' }, '+ Añadir tarea'), el('button', { type: 'button', class: 'btn ghost small', onclick: () => persist({ reset: true }) }, 'Volver a la lista estándar')) : '');
+        newName, el('button', { class: 'btn small' }, '+ Añadir tarea')) : '');
   };
   draw();
   return box;

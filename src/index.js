@@ -19,6 +19,7 @@ import { PUBLIC_URL, sendHtml, sendMail } from './mailer.js';
 import crypto from 'node:crypto';
 import { driveListing, folderIdOf, createFolder, readClientFile, rootId as driveRootId } from './drive.js';
 import { summarize, conclude } from './ai.js';
+import { syncClickup, clickupEnabled } from './clickup.js';
 import { viewOn, viewMap, VIEW_KEYS, denyView } from './visibility.js';
 import { tasksOf, timelineOf, fasesOf, cleanFases, fasesBase } from './plan.js';
 import { buildReport, REPORT_TO } from './report.js';
@@ -913,6 +914,25 @@ app.put('/api/clients/:id/proceso', ...staff, wrap(async (req, res) => {
   await saveSection(c, 'proceso', { fases }, req.user.email);
   const all = await sectionsOf(c.id);
   res.json({ fases: fasesOf(all), timeline: timelineOf(all, { includeEmpty: true }) });
+}));
+
+// Sincroniza las tareas con ClickUp: si «Enlace de ClickUp» apunta a un espacio que responde, se usa; si no, se crea uno con el nombre del cliente
+// y su enlace se guarda en el proyecto. Cada tarea con responsable se asigna a esa persona (con sus fechas) y se le avisa desde ClickUp.
+const syncing = new Set();
+app.get('/api/clickup/status', ...staff, (_req, res) => res.json({ enabled: clickupEnabled() }));
+app.post('/api/clients/:id/clickup/sync', ...staff, requireRole('super_admin', 'admin'), wrap(async (req, res) => {
+  const c = await clientOf(req, res); if (!c) return;
+  if (syncing.has(c.id)) return res.status(409).json({ error: 'Ya se está sincronizando este cliente.' });
+  syncing.add(c.id);
+  try {
+    const all = await sectionsOf(c.id);
+    const fases = JSON.parse(JSON.stringify(fasesOf(all)));
+    const r = await syncClickup({ link: (all.proyecto || {}).enlace_clickup, clientName: c.name, fases, state: (all.proceso || {}).clickup || {} });
+    await saveSection(c, 'proceso', { fases: cleanFases(r.fases), clickup: { list_id: r.listId, space_id: r.spaceId, synced_at: new Date().toISOString() } }, req.user.email);
+    if (r.link && r.link !== (all.proyecto || {}).enlace_clickup) await saveSection(c, 'proyecto', { enlace_clickup: r.link }, req.user.email);
+    const now = await sectionsOf(c.id);
+    res.json({ ok: true, link: r.link, spaceCreated: r.spaceCreated, created: r.created, updated: r.updated, pulled: r.pulled, notified: r.notified, unassigned: r.unassigned, fases: fasesOf(now), timeline: timelineOf(now, { includeEmpty: true }) });
+  } finally { syncing.delete(c.id); }
 }));
 
 // «Ver cliente»: solo un superadministrador decide qué ve el cliente en su espacio.

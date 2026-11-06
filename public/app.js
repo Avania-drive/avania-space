@@ -5,6 +5,7 @@ import { kpisNode, scopeForm, partOf, panelView, configView, notesTab, linksCard
 
 const app = document.getElementById('app');
 let me = null, formDef = null, ayuda = {};
+let clickupNote = null;   // resultado de la última sincronización con ClickUp (se enseña al repintar Tareas)
 const ROLE = { super_admin: 'Superadministrador', admin: 'Administrador', member: 'Miembro' };
 const STATUS = { onboarding: 'Onboarding', montaje: 'Montaje', rodaje: 'Rodaje', formacion: 'Formación', activa: 'Campaña activa', pausada: 'Pausada' };
 
@@ -567,6 +568,7 @@ async function clientView(id, tab) {
   } else if (t.key === 'plan') {
     main.append(el('p', { class: 'muted' }, 'Todo lo que hacemos por el cliente, desde los documentos de investigación hasta el lanzamiento. Cada tarea tiene su responsable del equipo, fecha de inicio y de fin, y puede llevar subtareas. El cliente lo ve y sigue cada paso. Los cambios se guardan al momento.'),
       el('section', { class: 'card', style: 'margin:12px 0' }, phasesNode(fases, { team, edit: { save: (b) => api('PUT', `/api/clients/${id}/proceso`, b), error: (e) => toast(e.message) } })),
+      ['super_admin', 'admin'].includes(me.role) ? clickupBar() : '',
       el('section', { class: 'cgroup' }, el('h2', {}, 'Próximas acciones'), taskColumns(tasks, { mine: 'Del cliente', ours: 'Nuestras', limit: 5, href: (tk) => (tk.section === 'proceso' ? `#/c/${id}/plan` : `#/c/${id}/${tk.section}`) })),
       el('section', { class: 'cgroup' }, el('h2', {}, 'Fechas clave'), el('div', { class: 'card' }, liveTimeline(80))));
   } else if (t.key === 'resultados') {
@@ -678,6 +680,26 @@ async function clientView(id, tab) {
       el('tbody', {}, log.length ? log.map((l) => el('tr', {}, el('td', {}, fmtDate(l.at, { dateStyle: 'short', timeStyle: 'short' })), el('td', {}, l.actor), el('td', {}, l.action), el('td', {}, l.service || '—'))) : el('tr', {}, el('td', { colspan: 4, class: 'muted' }, 'Sin movimientos.'))))));
   }
 
+  // Sincronizar las tareas con ClickUp: usa el espacio del «Enlace de ClickUp» si responde; si no, crea uno y guarda su enlace en el proyecto.
+  function clickupBar() {
+    const link = String((sections.proyecto || {}).enlace_clickup || '').trim();
+    const msg = el('span', { class: 'muted', role: 'status' });
+    if (clickupNote && clickupNote.id === id) { msg.className = 'saved ok'; msg.replaceChildren(clickupNote.text, el('a', { href: clickupNote.link, target: '_blank', rel: 'noopener' }, 'Abrir en ClickUp ↗')); }
+    const btn = el('button', { type: 'button', class: 'btn small' }, link ? 'Sincronizar con ClickUp' : 'Crear espacio en ClickUp y sincronizar');
+    api('GET', '/api/clickup/status').then((r) => { if (!r.enabled) { btn.disabled = true; msg.textContent = 'Falta la clave de ClickUp en el servidor (CLICKUP_API_TOKEN).'; } }).catch(() => {});
+    btn.addEventListener('click', async () => {
+      const ok = await askConfirm({ title: link ? 'Sincronizar con ClickUp' : 'Crear espacio en ClickUp',
+        text: `${link ? 'Se usará el espacio de ClickUp que hay en el proyecto.' : `Todavía no hay espacio: se creará uno llamado «${client.name}» y su enlace se guardará en el proyecto.`} Las tareas y subtareas se crean o se actualizan en la lista «Tareas del proyecto», cada una asignada a su responsable con sus fechas (si no tiene inicio, hoy), y a cada persona se le avisa desde ClickUp de su tarea nueva. Lo cerrado en ClickUp se marca como hecho aquí.`, ok: 'Sincronizar' });
+      if (!ok) return;
+      btn.disabled = true; msg.className = 'muted'; msg.textContent = 'Sincronizando con ClickUp…';
+      try {
+        const r = await api('POST', `/api/clients/${id}/clickup/sync`);
+        clickupNote = { id, text: `${r.spaceCreated ? 'Espacio creado. ' : ''}${r.created} nuevas, ${r.updated} actualizadas${r.pulled ? `, ${r.pulled} cerradas en ClickUp` : ''}${r.notified.length ? ` · avisados: ${r.notified.join(', ')}` : ''}${r.unassigned.length ? ` · sin persona en ClickUp: ${r.unassigned.join(', ')}` : ''}. `, link: r.link };
+        route();   // las tareas vuelven con su id de ClickUp: hay que repintarlas para que los cambios siguientes no dupliquen
+      } catch (e) { msg.className = 'err'; msg.textContent = e.message; btn.disabled = false; }
+    });
+    return el('div', { class: 'row clickupbar', style: 'gap:10px;align-items:center;flex-wrap:wrap;margin:-4px 0 14px' }, btn, link ? el('a', { class: 'btn ghost small', href: link, target: '_blank', rel: 'noopener' }, 'Abrir espacio ↗') : '', msg);
+  }
   // Datos básicos del cliente (nombre, ciudad, categoría, responsable, fechas y enlaces). Son los mismos campos de la ficha: se guardan al momento.
   const onlyFields = (skey, keys, title) => { const sec = partOf(formDef, skey, keys, title); return { ...sec, groups: sec.groups.map((g) => ({ ...g, title: '', intro: undefined, fields: g.fields.filter((f) => keys.includes(f.k)) })).filter((g) => g.fields.length) }; };
   // Qué secciones de la ficha lleva este cliente (propias o, si no se ha tocado, las de su categoría).

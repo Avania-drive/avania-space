@@ -79,7 +79,7 @@ export function cleanFases(list) {
   const one = (r) => {
     const inicio = isoDate(r.inicio) || '', fecha = isoDate(r.fecha) || '';
     return { fase: t(r.fase, 160), quien: FASES_QUIEN.includes(r.quien) ? r.quien : 'AVANIA', estado: FASES_ESTADO.includes(r.estado) ? r.estado : 'Pendiente',
-      responsable: t(r.responsable, 80), inicio, fecha, nota: t(r.nota, 300) };
+      responsable: t(r.responsable, 80), inicio, fecha, nota: t(r.nota, 300), ...(t(r.cu, 40) ? { cu: t(r.cu, 40) } : {}) };   // cu = id de la tarea en ClickUp
   };
   return (Array.isArray(list) ? list : []).slice(0, 60).filter((r) => t(r?.fase, 160)).map((r) => ({
     ...one(r), sub: (Array.isArray(r.sub) ? r.sub : []).slice(0, 40).filter((x) => t(x?.fase, 160)).map(one) }));

@@ -44,7 +44,8 @@ export function mountPeople(app, { wrap, staff }) {
     const r = await q(`select u.id, u.client_id, c.name client_name, c.archived client_archived, u.email, u.name, u.role, u.active, u.last_login, u.created_at, u.created_by,
         (u.password_hash is null) pending
       from client_users u join clients c on c.id = u.client_id order by c.name, u.role, u.created_at`);
-    res.json({ people: r.rows });
+    const cl = await q('select id, name from clients where not archived order by name');
+    res.json({ people: r.rows, clients: cl.rows });
   }));
 
   // Clientes de un miembro del equipo.

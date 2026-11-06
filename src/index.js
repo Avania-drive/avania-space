@@ -19,7 +19,7 @@ import { PUBLIC_URL, sendHtml, sendMail } from './mailer.js';
 import crypto from 'node:crypto';
 import { driveListing, folderIdOf, createFolder, readClientFile, rootId as driveRootId } from './drive.js';
 import { summarize, conclude } from './ai.js';
-import { syncClickup, clickupEnabled } from './clickup.js';
+import { syncClickup, clickupEnabled, clickupTargets } from './clickup.js';
 import { viewOn, viewMap, VIEW_KEYS, denyView } from './visibility.js';
 import { tasksOf, timelineOf, fasesOf, cleanFases, fasesBase } from './plan.js';
 import { buildReport, REPORT_TO } from './report.js';
@@ -930,6 +930,14 @@ app.put('/api/clients/:id/proceso', ...staff, wrap(async (req, res) => {
 // y su enlace se guarda en el proyecto. Cada tarea con responsable se asigna a esa persona (con sus fechas) y se le avisa desde ClickUp.
 const syncing = new Set();
 app.get('/api/clickup/status', ...staff, (_req, res) => res.json({ enabled: clickupEnabled() }));
+// Espacios y listas de ClickUp para elegir el destino de las tareas de un cliente (con el espacio «[CL] …» que más se parece ya sugerido).
+app.get('/api/clients/:id/clickup/targets', ...staff, requireRole('super_admin', 'admin'), wrap(async (req, res) => {
+  const c = await clientOf(req, res); if (!c) return;
+  const all = await sectionsOf(c.id);
+  const t = await clickupTargets(c.name, (all.proyecto || {}).enlace_clickup);
+  const cur = (all.proceso || {}).clickup || {};
+  res.json({ ...t, current: cur.list_id ? { list_id: String(cur.list_id), space_id: cur.space_id ? String(cur.space_id) : null } : null });
+}));
 app.post('/api/clients/:id/clickup/sync', ...staff, requireRole('super_admin', 'admin'), wrap(async (req, res) => {
   const c = await clientOf(req, res); if (!c) return;
   if (syncing.has(c.id)) return res.status(409).json({ error: 'Ya se está sincronizando este cliente.' });
@@ -937,11 +945,17 @@ app.post('/api/clients/:id/clickup/sync', ...staff, requireRole('super_admin', '
   try {
     const all = await sectionsOf(c.id);
     const fases = JSON.parse(JSON.stringify(fasesOf(all)));
-    const r = await syncClickup({ link: (all.proyecto || {}).enlace_clickup, clientName: c.name, fases, state: (all.proceso || {}).clickup || {} });
+    const state = (all.proceso || {}).clickup || {};
+    const pick = req.body || {};
+    const target = pick.create === true ? { create: true } : /^\d{4,}$/.test(String(pick.list_id || '')) ? { list_id: String(pick.list_id), space_id: /^\d{4,}$/.test(String(pick.space_id || '')) ? String(pick.space_id) : null } : null;
+    // Si cambia la lista de destino, las tareas de la lista anterior ya no cuentan: se crean de nuevo en la nueva (lo que ya está en esa lista se reconoce por su id).
+    const quita = (f) => { delete f.cu; (f.sub || []).forEach(quita); };
+    if (target?.list_id && String(state.list_id || '') !== target.list_id && !pick.keep_ids) fases.forEach(quita);
+    const r = await syncClickup({ link: (all.proyecto || {}).enlace_clickup, clientName: c.name, fases, state, target });
     await saveSection(c, 'proceso', { fases: cleanFases(r.fases), clickup: { list_id: r.listId, space_id: r.spaceId, synced_at: new Date().toISOString() } }, req.user.email);
     if (r.link && r.link !== (all.proyecto || {}).enlace_clickup) await saveSection(c, 'proyecto', { enlace_clickup: r.link }, req.user.email);
     const now = await sectionsOf(c.id);
-    res.json({ ok: true, link: r.link, spaceCreated: r.spaceCreated, created: r.created, updated: r.updated, pulled: r.pulled, notified: r.notified, unassigned: r.unassigned, fases: fasesOf(now), timeline: timelineOf(now, { includeEmpty: true }) });
+    res.json({ ok: true, link: r.link, spaceCreated: r.spaceCreated, created: r.created, updated: r.updated, pulled: r.pulled, notified: r.notified, unassigned: r.unassigned, adjusted: r.adjusted, fases: fasesOf(now), timeline: timelineOf(now, { includeEmpty: true }) });
   } finally { syncing.delete(c.id); }
 }));
 
@@ -1134,7 +1148,7 @@ app.use((err, _req, res, _next) => {
   console.error(err);
   // Los errores con estado propio (p. ej. los de Avania Funnels) llevan un mensaje pensado para mostrarse.
   const st = Number.isInteger(err.status) && err.status >= 400 && err.status < 600 ? err.status : 500;
-  res.status(st).json({ error: st === 500 ? 'Error del servidor' : err.message });
+  res.status(st).json({ error: st === 500 ? 'Error del servidor' : err.message, ...(err.code === 'needs_target' ? { code: err.code } : {}) });
 });
 
 const port = Number(process.env.PORT || 3003);

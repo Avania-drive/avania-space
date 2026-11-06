@@ -681,24 +681,70 @@ async function clientView(id, tab) {
   }
 
   // Sincronizar las tareas con ClickUp: usa el espacio del «Enlace de ClickUp» si responde; si no, crea uno y guarda su enlace en el proyecto.
+  // Elegir a qué espacio y lista de ClickUp van las tareas de este cliente (el espacio «[CL] …» que se le parece sale marcado).
+  async function clickupPicker(current) {
+    const t = await api('GET', `/api/clients/${id}/clickup/targets`);
+    return new Promise((resolve) => {
+      const spaceSel = el('select', { id: 'cu-space', 'aria-label': 'Espacio de ClickUp' }, el('option', { value: '' }, 'Elige un espacio…'),
+        t.spaces.map((s) => el('option', { value: s.id }, s.name)), el('option', { value: '__new' }, `+ Crear un espacio nuevo llamado «${client.name}»`));
+      const listSel = el('select', { id: 'cu-list', 'aria-label': 'Lista de ClickUp' });
+      const note = el('p', { class: 'muted', style: 'margin:8px 0 0;font-size:13px' });
+      const startSpace = (current && t.spaces.some((s) => s.id === current.space_id) && current.space_id) || t.suggested || '';
+      spaceSel.value = startSpace;
+      const fill = () => {
+        const sp = t.spaces.find((s) => s.id === spaceSel.value);
+        listSel.disabled = !sp;
+        listSel.replaceChildren(...(sp ? (sp.lists.length ? sp.lists.map((l) => el('option', { value: l.id }, l.folder ? `${l.folder} › ${l.name}` : l.name)) : [el('option', { value: '' }, 'Este espacio no tiene listas')]) : [el('option', { value: '' }, spaceSel.value === '__new' ? 'Se creará la lista «Tareas del proyecto»' : 'Primero elige el espacio')]));
+        if (sp && current && current.space_id === sp.id && sp.lists.some((l) => l.id === current.list_id)) listSel.value = current.list_id;
+        note.textContent = spaceSel.value && spaceSel.value === t.suggested && spaceSel.value !== (current || {}).space_id ? 'Sugerido por el nombre del cliente. Compruébalo antes de seguir.' : '';
+      };
+      spaceSel.addEventListener('change', fill); fill();
+      const go = el('button', { type: 'button', class: 'btn', onclick: () => {
+        if (!spaceSel.value) return spaceSel.focus();
+        if (spaceSel.value === '__new') return m.close({ create: true });
+        if (!listSel.value) return listSel.focus();
+        m.close({ space_id: spaceSel.value, list_id: listSel.value });
+      } }, 'Sincronizar aquí');
+      const card = el('div', { class: 'card', style: 'width:min(520px,94vw)' }, el('h2', { style: 'margin-top:0' }, 'Destino en ClickUp'),
+        el('p', { class: 'muted', style: 'margin:0 0 12px' }, `¿Dónde van las tareas de ${client.name}? Se guardará y las próximas sincronizaciones irán siempre ahí.`),
+        el('label', { for: 'cu-space' }, 'Espacio'), spaceSel, el('label', { for: 'cu-list', style: 'margin-top:10px' }, 'Lista de tareas'), listSel, note,
+        el('p', { class: 'muted', style: 'margin:10px 0 0;font-size:13px' }, 'Se crean o actualizan las tareas y subtareas en esa lista, cada una con su responsable y fechas, y se avisa a cada persona desde ClickUp. Si cambias de lista, las tareas se crean de nuevo en la nueva.'),
+        el('div', { class: 'row end', style: 'margin-top:14px' }, el('button', { type: 'button', class: 'btn ghost', onclick: () => m.close(null) }, 'Cancelar'), go));
+      const m = openModal(card, { label: 'Destino en ClickUp', onClose: (v) => resolve(v || null) });
+    });
+  }
   function clickupBar() {
     const link = String((sections.proyecto || {}).enlace_clickup || '').trim();
+    const cur = ((sections.proceso || {}).clickup) || null;
+    const linked = !!(cur && cur.list_id);
     const msg = el('span', { class: 'muted', role: 'status' });
     if (clickupNote && clickupNote.id === id) { msg.className = 'saved ok'; msg.replaceChildren(clickupNote.text, el('a', { href: clickupNote.link, target: '_blank', rel: 'noopener' }, 'Abrir en ClickUp ↗')); }
-    const btn = el('button', { type: 'button', class: 'btn small' }, link ? 'Sincronizar con ClickUp' : 'Crear espacio en ClickUp y sincronizar');
-    api('GET', '/api/clickup/status').then((r) => { if (!r.enabled) { btn.disabled = true; msg.textContent = 'Falta la clave de ClickUp en el servidor (CLICKUP_API_TOKEN).'; } }).catch(() => {});
-    btn.addEventListener('click', async () => {
-      const ok = await askConfirm({ title: link ? 'Sincronizar con ClickUp' : 'Crear espacio en ClickUp',
-        text: `${link ? 'Se usará el espacio de ClickUp que hay en el proyecto.' : `Todavía no hay espacio: se creará uno llamado «${client.name}» y su enlace se guardará en el proyecto.`} Las tareas y subtareas se crean o se actualizan en la lista «Tareas del proyecto», cada una asignada a su responsable con sus fechas (si no tiene inicio, hoy), y a cada persona se le avisa desde ClickUp de su tarea nueva. Lo cerrado en ClickUp se marca como hecho aquí.`, ok: 'Sincronizar' });
-      if (!ok) return;
-      btn.disabled = true; msg.className = 'muted'; msg.textContent = 'Sincronizando con ClickUp…';
+    const btn = el('button', { type: 'button', class: 'btn small' }, 'Sincronizar con ClickUp');
+    const change = linked ? el('button', { type: 'button', class: 'btn ghost small' }, 'Cambiar destino') : null;
+    let enabled = true;
+    api('GET', '/api/clickup/status').then((r) => { if (!r.enabled) { enabled = false; btn.disabled = true; if (change) change.disabled = true; msg.textContent = 'Falta la clave de ClickUp en el servidor (CLICKUP_API_TOKEN).'; } }).catch(() => {});
+    const run = async (pick) => {
+      btn.disabled = true; if (change) change.disabled = true; msg.className = 'muted'; msg.textContent = 'Sincronizando con ClickUp…';
       try {
-        const r = await api('POST', `/api/clients/${id}/clickup/sync`);
-        clickupNote = { id, text: `${r.spaceCreated ? 'Espacio creado. ' : ''}${r.created} nuevas, ${r.updated} actualizadas${r.pulled ? `, ${r.pulled} cerradas en ClickUp` : ''}${r.notified.length ? ` · avisados: ${r.notified.join(', ')}` : ''}${r.unassigned.length ? ` · sin persona en ClickUp: ${r.unassigned.join(', ')}` : ''}. `, link: r.link };
+        const r = await api('POST', `/api/clients/${id}/clickup/sync`, pick || {});
+        clickupNote = { id, text: `${r.spaceCreated ? 'Espacio creado. ' : ''}${r.created} nuevas, ${r.updated} actualizadas${r.pulled ? `, ${r.pulled} cerradas en ClickUp` : ''}${r.notified.length ? ` · avisados: ${r.notified.join(', ')}` : ''}${r.unassigned.length ? ` · sin persona en ClickUp: ${r.unassigned.join(', ')}` : ''}${(r.adjusted || []).length ? ` · inicio posterior al fin, ajustado al día del fin: ${r.adjusted.join(', ')}` : ''}. `, link: r.link };
         route();   // las tareas vuelven con su id de ClickUp: hay que repintarlas para que los cambios siguientes no dupliquen
-      } catch (e) { msg.className = 'err'; msg.textContent = e.message; btn.disabled = false; }
+      } catch (e) {
+        if (e.code === 'needs_target') { msg.textContent = ''; btn.disabled = false; if (change) change.disabled = false; return choose(); }
+        msg.className = 'err'; msg.textContent = e.message; btn.disabled = !enabled; if (change) change.disabled = !enabled;
+      }
+    };
+    const choose = async () => {
+      msg.className = 'muted'; msg.textContent = 'Leyendo los espacios de ClickUp…';
+      try { const pick = await clickupPicker(cur); msg.textContent = ''; if (pick) run(pick); } catch (e) { msg.className = 'err'; msg.textContent = e.message; }
+    };
+    btn.addEventListener('click', async () => {
+      if (!linked) return choose();
+      const ok = await askConfirm({ title: 'Sincronizar con ClickUp', text: 'Las tareas y subtareas se crean o se actualizan en la lista de ClickUp elegida para este cliente, cada una asignada a su responsable con sus fechas (si no tiene inicio, hoy). A cada persona se le avisa desde ClickUp de su tarea nueva. Lo cerrado en ClickUp se marca como hecho aquí.', ok: 'Sincronizar' });
+      if (ok) run();
     });
-    return el('div', { class: 'row clickupbar', style: 'gap:10px;align-items:center;flex-wrap:wrap;margin:-4px 0 14px' }, btn, link ? el('a', { class: 'btn ghost small', href: link, target: '_blank', rel: 'noopener' }, 'Abrir espacio ↗') : '', msg);
+    if (change) change.addEventListener('click', choose);
+    return el('div', { class: 'row clickupbar', style: 'gap:10px;align-items:center;flex-wrap:wrap;margin:-4px 0 14px' }, btn, change || '', link ? el('a', { class: 'btn ghost small', href: link, target: '_blank', rel: 'noopener' }, 'Abrir espacio ↗') : '', msg);
   }
   // Datos básicos del cliente (nombre, ciudad, categoría, responsable, fechas y enlaces). Son los mismos campos de la ficha: se guardan al momento.
   const onlyFields = (skey, keys, title) => { const sec = partOf(formDef, skey, keys, title); return { ...sec, groups: sec.groups.map((g) => ({ ...g, title: '', intro: undefined, fields: g.fields.filter((f) => keys.includes(f.k)) })).filter((g) => g.fields.length) }; };
@@ -981,7 +1027,9 @@ async function usersView(tab) {
 }
 const lastSeen = (d) => (d ? fmtDate(d, { dateStyle: 'medium' }) : '—');
 async function peopleTab(box) {
-  const { people } = await api('GET', '/api/people');
+  const { people, clients } = await api('GET', '/api/people');
+  const withUsers = new Set(people.map((p) => p.client_id));
+  const empty = clients.filter((c) => !withUsers.has(c.id));
   const list = el('div', { class: 'card teamlist' });
   const q = el('input', { type: 'search', placeholder: 'Buscar por nombre, correo o cliente…', 'aria-label': 'Buscar personas', style: 'flex:1 1 260px;min-width:200px' });
   const clientSel = el('select', { 'aria-label': 'Filtrar por cliente' }, el('option', { value: '' }, 'Todos los clientes'),
@@ -992,7 +1040,11 @@ async function peopleTab(box) {
     const t = q.value.trim().toLowerCase();
     const rows = people.filter((p) => (!clientSel.value || p.client_id === clientSel.value) && (!roleSel.value || p.role === roleSel.value)
       && (!t || [p.name, p.email, p.client_name].some((x) => String(x || '').toLowerCase().includes(t))));
+    const none = empty.filter((c) => (!clientSel.value || c.id === clientSel.value) && !roleSel.value && (!t || c.name.toLowerCase().includes(t)));
     list.replaceChildren(el('div', { class: 'trow prow thead', 'aria-hidden': 'true' }, ['Persona', 'Cliente', 'Rol', 'Estado', 'Último acceso', ''].map((h) => el('span', {}, h))),
+      ...none.map((c) => el('div', { class: 'trow prow' }, el('div', { class: 'tuser' }, el('span', { class: 'uav', 'aria-hidden': 'true' }, '–'), el('div', {}, el('strong', {}, 'Sin usuarios'), el('div', { class: 'muted' }, 'Nadie de este cliente tiene acceso al portal'))),
+        el('div', { class: 'tcell', 'data-l': 'Cliente' }, el('a', { href: `#/c/${c.id}/personas` }, c.name)), el('div', { class: 'tcell' }, '—'), el('div', { class: 'tcell' }, '—'), el('div', { class: 'tcell' }, '—'),
+        el('div', { class: 'tacts' }, el('button', { class: 'btn ghost small', onclick: () => newClientUser(c) }, 'Añadir usuario')))),
       ...(rows.length ? rows.map((p) => el('div', { class: 'trow prow' },
         el('div', { class: 'tuser' }, el('span', { class: 'uav', 'aria-hidden': 'true' }, (p.name || p.email)[0].toUpperCase()), el('div', {}, el('strong', {}, p.name || p.email), el('div', { class: 'muted' }, p.email))),
         el('div', { class: 'tcell', 'data-l': 'Cliente' }, el('a', { href: `#/c/${p.client_id}/personas` }, p.client_name)),
@@ -1001,10 +1053,19 @@ async function peopleTab(box) {
         el("div", { class: "tcell", "data-l": "Último acceso" }, lastSeen(p.last_login)),
         el('div', { class: 'tacts' }, p.pending && p.active ? el('button', { class: 'btn ghost small', onclick: () => act(p, { resend_invite: true }) }, 'Reenviar acceso') : '',
           el('button', { class: 'btn ghost small', onclick: async () => (p.active ? await askConfirm({ title: 'Desactivar acceso', text: `${p.email} dejará de poder entrar al portal de ${p.client_name}.`, ok: 'Desactivar', danger: true }) : true) && act(p, { active: !p.active }) }, p.active ? 'Desactivar' : 'Activar'))))
-        : [el('p', { class: 'muted', style: 'padding:16px 18px;margin:0' }, 'No hay personas con esos filtros.')]));
+        : none.length ? [] : [el('p', { class: 'muted', style: 'padding:16px 18px;margin:0' }, 'No hay personas con esos filtros.')]));
   };
   [q, clientSel, roleSel].forEach((x) => x.addEventListener('input', draw));
-  box.replaceChildren(el('p', { class: 'muted', style: 'margin:0 0 12px' }, `${people.length} ${people.length === 1 ? 'persona' : 'personas'} con acceso al portal de sus clientes. Cada responsable gestiona a su equipo desde «Mi equipo»; aquí lo ves todo junto. Para dar de alta a alguien, hazlo en la ficha del cliente, en Personas.`),
+  const newClientUser = async (c) => {
+    const r = await clientUserDialog(clients, c);
+    if (!r) return;
+    try {
+      const x = await api('POST', `/api/clients/${r.client_id}/users`, { email: r.email, name: r.name, role: r.role });
+      await notice(x.email_sent ? { title: 'Usuario creado', text: `Le hemos enviado un correo a ${r.email} con el enlace para elegir su contraseña (caduca en 48 horas).` } : { title: 'Usuario creado, pero el correo no ha salido', text: `${x.email_error || ''} Pulsa «Reenviar acceso» cuando se arregle el correo.` });
+      route();
+    } catch (e) { toast(e.message); }
+  };
+  box.replaceChildren(el('div', { class: 'row', style: 'margin-bottom:12px' }, el('p', { class: 'muted grow', style: 'margin:0' }, `${people.length} ${people.length === 1 ? 'persona' : 'personas'} con acceso al portal de ${clients.length - empty.length} de ${clients.length} clientes. Cada responsable gestiona a su equipo desde «Mi equipo»; aquí lo ves todo junto y puedes dar de alta a quien haga falta.`), el('button', { class: 'btn', onclick: () => newClientUser(null) }, '+ Nuevo usuario de cliente')),
     el('div', { class: 'row', style: 'margin-bottom:12px;flex-wrap:wrap' }, q, clientSel, roleSel), list);
   draw();
 }
@@ -1016,6 +1077,23 @@ async function auditTab(box) {
       el('div', {}, el('strong', {}, r.action), r.target ? ` · ${r.target}` : '', r.detail ? el('div', { class: 'muted' }, r.detail) : ''),
       el('span', {}, r.client_name ? el('a', { href: `#/c/${r.client_id}` }, r.client_name) : '—'),
       el('span', { class: 'muted' }, r.actor || 'sistema', r.actor_kind === 'cliente' ? ' (cliente)' : ''))) : el('p', { class: 'muted', style: 'padding:16px 18px;margin:0' }, 'Todavía no hay movimientos.')));
+}
+// Alta de una persona de un cliente (responsable o miembro): recibe un correo para elegir su contraseña.
+function clientUserDialog(clients, pre) {
+  return new Promise((resolve) => {
+    const cl = el('select', { id: 'ncu-cliente', name: 'client' }, el('option', { value: '' }, 'Elige el cliente…'), clients.map((c) => el('option', { value: c.id }, c.name)));
+    if (pre) cl.value = pre.id;
+    const email = el('input', { id: 'ncu-correo', name: 'email', type: 'email', autocomplete: 'off', required: true });
+    const name = el('input', { id: 'ncu-nombre', name: 'name', autocomplete: 'off' });
+    const role = el('select', { id: 'ncu-rol', name: 'role' }, el('option', { value: 'responsable' }, 'Responsable: ve todo lo suyo, invita a su equipo y ve los accesos'), el('option', { value: 'miembro' }, 'Miembro: rellena y consulta, no ve accesos'));
+    const err = el('div', { class: 'err', role: 'alert' });
+    const card = el('form', { class: 'card', style: 'width:min(520px,94vw)', onsubmit: (e) => { e.preventDefault(); if (!cl.value) { err.textContent = 'Elige el cliente'; return cl.focus(); } d.close({ client_id: cl.value, email: email.value.trim(), name: name.value.trim(), role: role.value }); } },
+      el('h2', { style: 'margin-top:0' }, 'Nuevo usuario de cliente'), el('label', { for: 'ncu-cliente' }, 'Cliente'), cl,
+      el('label', { for: 'ncu-correo', style: 'margin-top:10px' }, 'Correo'), email, el('label', { for: 'ncu-nombre', style: 'margin-top:10px' }, 'Nombre'), name,
+      el('label', { for: 'ncu-rol', style: 'margin-top:10px' }, 'Rol'), role, err,
+      el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn ghost', onclick: () => d.close(null) }, 'Cancelar'), el('button', { class: 'btn' }, 'Crear usuario')));
+    const d = openModal(card, { label: 'Nuevo usuario de cliente', onClose: (v) => resolve(v || null) });
+  });
 }
 // Clientes de un miembro del equipo: solo ve los marcados.
 async function assignDialog(u) {

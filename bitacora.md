@@ -647,3 +647,12 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 - **Registro de actividad** (`src/audit.js`): alta, cambios de rol, activación, reinicio de contraseña/2FA y reenvío de acceso de usuarios del equipo y de clientes, bajas, y asignaciones de clientes. Distingue si lo hizo el equipo o un responsable del cliente.
 - Probado en navegador y por API con usuarios de prueba (ya borrados): miembro, administrador y superadmin; escritorio y móvil.
 - Pendiente: una persona en varios clientes (hoy un correo = un cliente; no hay casos).
+
+## 6-nov — ClickUp: elegir el espacio y la lista de destino (y corrección de Enzo Romano)
+- **Error:** el botón creó un Space nuevo «Enzo Romano» en vez de usar el del cliente («[CL] ENZO», lista «CANAL ENZO»). Las 8 tareas ya se han movido a mano a esa lista; Space ahora apunta a ella (enlace del proyecto y lista guardada). El Space vacío «Enzo Romano» sigue en ClickUp, pendiente de que Pascual decida borrarlo.
+- **Ya no se crea nada solo.** Sin destino guardado, «Sincronizar con ClickUp» abre «Destino en ClickUp»: espacio (sugerido por nombre: el «[CL] …» que más se parece) y lista (incluidas las que están dentro de carpetas), o «+ Crear un espacio nuevo» como opción explícita. El destino se guarda y las siguientes sincronizaciones van siempre ahí; «Cambiar destino» lo vuelve a abrir. Si se cambia de lista, las tareas se crean de nuevo en la nueva (sus ids antiguos se descartan).
+- `GET /api/clients/:id/clickup/targets` (espacios y listas) y `POST …/clickup/sync` con `{space_id, list_id}` o `{create:true}`; sin destino responde 409 `needs_target`.
+- **Usuarios › Clientes:** salen también los clientes sin ningún usuario (con «Añadir usuario») y botón «+ Nuevo usuario de cliente» (cliente, correo, nombre, rol; se envía el correo para elegir contraseña).
+
+## 6-nov — ClickUp: inicio posterior al fin
+- Si una tarea llega con el inicio después del fin (ClickUp lo rechaza), el inicio se lleva al día del fin y se avisa en el resultado. Caso real: «Documentos de investigación» de Paula Fernández (inicio 2/11, fin 29/10): las fechas siguen mal en Space, hay que corregirlas.

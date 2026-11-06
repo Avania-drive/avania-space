@@ -33,28 +33,52 @@ const ms = (iso, end = false) => (/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? Date.p
 const norm = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
 
 /**
+ * Espacios de ClickUp con sus listas (las sueltas y las que están dentro de carpetas), para elegir a dónde van las tareas de un cliente.
+ * `hint` = nombre del cliente: el espacio «[CL] NOMBRE» que más se le parece sale marcado como sugerido.
+ */
+export async function clickupTargets(hint = '', linkHint = '') {
+  const team = await teamId(parseClickupUrl(linkHint)?.team);
+  const { spaces = [] } = await cu('GET', `/team/${team.id}/space?archived=false`);
+  const out = await Promise.all(spaces.map(async (sp) => {
+    const [direct, folders] = await Promise.all([cu('GET', `/space/${sp.id}/list?archived=false`), cu('GET', `/space/${sp.id}/folder?archived=false`)]);
+    const lists = [...(direct.lists || []).map((l) => ({ id: String(l.id), name: l.name, folder: null })),
+      ...(folders.folders || []).flatMap((f) => (f.lists || []).map((l) => ({ id: String(l.id), name: l.name, folder: f.name })))];
+    return { id: String(sp.id), name: sp.name, url: spaceUrl(team.id, sp.id), lists };
+  }));
+  const h = norm(hint).replace(/^cl/, '');
+  const score = (n) => { const k = norm(n).replace(/^cl/, ''); return h && k ? (k === h ? 3 : k.includes(h) || h.includes(k) ? 2 : 0) : 0; };
+  let best = null;
+  for (const sp of out) { const sc = score(sp.name); if (sc && (!best || sc > best.sc)) best = { sc, id: sp.id }; }
+  out.sort((x, y) => Number(/^\[cl\]/i.test(y.name)) - Number(/^\[cl\]/i.test(x.name)) || x.name.localeCompare(y.name));
+  return { team: String(team.id), suggested: best?.id || null, spaces: out };
+}
+
+/**
  * Sincroniza. `link` = lo que haya en «Enlace de ClickUp» del proyecto; `clientName`; `fases` = las tareas de Space; `state` = { list_id } guardado de otras veces.
  * Devuelve { link, spaceCreated, listId, fases (con `cu` y estados al día), created, updated, pulled, notified, unassigned }.
  * Cada tarea con responsable se asigna a esa persona de ClickUp (por nombre), con su fecha de inicio (o la de hoy si no tiene) y la de fin, y se le avisa.
  */
-export async function syncClickup({ link, clientName, fases, state = {} }) {
+export async function syncClickup({ link, clientName, fases, state = {}, target = null }) {
   const parsed = parseClickupUrl(link);
   const team = await teamId(parsed?.team);
-  // 1) El espacio: el del enlace si existe y responde; si no, se crea uno con el nombre del cliente.
-  let space = null, spaceCreated = false;
-  if (parsed?.space) { try { space = await cu('GET', `/space/${parsed.space}`); } catch (e) { if (e.status === 409) throw e; space = null; } }
-  if (!space) {
+  // 1) Destino: el que se acaba de elegir; si no, la lista guardada de otras veces o la del enlace. Nunca se crea un espacio sin pedirlo.
+  let space = null, spaceCreated = false, listId = null;
+  if (target?.create) {
     space = await cu('POST', `/team/${team.id}/space`, { name: String(clientName).slice(0, 100), multiple_assignees: true, features: { due_dates: { enabled: true, start_date: true }, time_tracking: { enabled: false }, tags: { enabled: true }, checklists: { enabled: true } } });
     spaceCreated = true;
+    listId = String((await cu('POST', `/space/${space.id}/list`, { name: 'Tareas del proyecto' })).id);
+  } else if (target?.list_id) {
+    listId = String(target.list_id);
+    const l = await cu('GET', `/list/${listId}`).catch((e) => { if (e.status === 409) throw e; throw fail('Esa lista de ClickUp ya no existe: elige otra.', 400); });
+    space = { id: l.space?.id || target.space_id || parsed?.space };
+  } else if (state.list_id || parsed?.list) {
+    listId = String(parsed?.list || state.list_id);
+    const l = await cu('GET', `/list/${listId}`).catch((e) => { if (e.status === 409) throw e; return null; });
+    if (l) space = { id: l.space?.id || state.space_id || parsed?.space };
+    else listId = null;
   }
-  // 2) La lista «Tareas del proyecto» dentro del espacio.
-  let listId = state.list_id && !spaceCreated ? String(state.list_id) : null;
-  if (parsed?.list && !spaceCreated) listId = parsed.list;
-  if (listId) { try { await cu('GET', `/list/${listId}`); } catch (e) { if (e.status === 409) throw e; listId = null; } }
-  if (!listId) {
-    const { lists = [] } = await cu('GET', `/space/${space.id}/list`);
-    listId = (lists.find((l) => norm(l.name) === norm('Tareas del proyecto')) || {}).id || (await cu('POST', `/space/${space.id}/list`, { name: 'Tareas del proyecto' })).id;
-  }
+  if (!listId) throw Object.assign(fail('Elige en qué espacio y lista de ClickUp van las tareas.', 409), { code: 'needs_target' });
+  if (!space?.id) space = { id: state.space_id || parsed?.space };
   // 3) Personas del equipo de ClickUp para asignar por nombre (usuario, correo o nombre de pila).
   const members = (team.members || []).map((m) => m.user).filter(Boolean);
   const person = (name) => {
@@ -75,7 +99,14 @@ export async function syncClickup({ link, clientName, fases, state = {} }) {
   const closedStatus = (t) => t.status?.type === 'closed';
   const dateText = (iso) => (iso ? iso.split('-').reverse().join('/') : 'sin fecha');
   // Fechas: la de inicio de la tarea (si no la tiene, hoy, que es cuando se le asigna) y la de fin de la tarea.
-  const dates = (f) => ({ start_date: ms(f.inicio || today), start_date_time: false, ...(ms(f.fecha, true) ? { due_date: ms(f.fecha, true), due_date_time: false } : {}) });
+  // ClickUp rechaza una tarea cuyo inicio es posterior al fin: si pasa (inicio mal puesto, o «hoy» ya pasado el fin), el inicio se lleva al día del fin y se avisa.
+  const adjusted = [];
+  const dates = (f) => {
+    const end = ms(f.fecha, true);
+    let start = ms(f.inicio || today);
+    if (end && start > end) { start = ms(f.fecha); adjusted.push(f.fase); }
+    return { start_date: start, start_date_time: false, ...(end ? { due_date: end, due_date_time: false } : {}) };
+  };
   async function one(f, parent) {
     const r = f.cu ? remote.get(String(f.cu)) : null;
     if (r && closedStatus(r) && f.estado !== 'Hecho') { f.estado = 'Hecho'; pulled += 1; }   // lo cerrado en ClickUp se trae a Space
@@ -105,5 +136,5 @@ export async function syncClickup({ link, clientName, fases, state = {} }) {
     const parentId = await one(f, null);
     for (const s of f.sub || []) await one(s, parentId);
   }
-  return { link: spaceCreated || !parsed?.space ? spaceUrl(team.id, space.id) : link, spaceCreated, spaceId: String(space.id), listId: String(listId), fases, created, updated, pulled, notified: [...new Set(notified)], unassigned: [...new Set(unassigned)] };
+  return { link: spaceUrl(team.id, space.id), spaceCreated, spaceId: String(space.id), listId: String(listId), fases, created, updated, pulled, notified: [...new Set(notified)], unassigned: [...new Set(unassigned)], adjusted: [...new Set(adjusted)] };
 }

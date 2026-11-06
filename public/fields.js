@@ -298,6 +298,7 @@ export function renderSection(sec, data, { team, save, preview, clientName, clie
       }
       const big = ['table', 'horario', 'docs', 'fichas', 'calendario'].includes(f.type);
       node.classList.add('w' + (f.w || (big || f.search ? 12 : 6)));
+      if (f.showIf) { const upd = () => { node.style.display = data[f.showIf.k] === f.showIf.v ? '' : 'none'; }; watchers.push(upd); upd(); }   // campo que depende de otra respuesta
       if (f.calside) node.classList.add('calside'); if (f.side) node.classList.add('side');
       if (f.owner !== 'team' && !['table', 'horario', 'docs', 'fichas', 'calendario', 'check'].includes(f.type) && node.lastElementChild) {
         const ctl = node.lastElementChild, box = el('div', { class: 'fctl' });

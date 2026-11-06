@@ -15,7 +15,8 @@ import { FORM, BLOCKS, SERVICES, SUGGESTED, progress, gates, sanitizeSection } f
 import { ID_RE, variantFor } from './funnels.js';
 import { sendInvite } from './invite.js';
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from '@simplewebauthn/server';
-import { PUBLIC_URL, sendHtml } from './mailer.js';
+import { PUBLIC_URL, sendHtml, sendMail } from './mailer.js';
+import crypto from 'node:crypto';
 import { driveListing, folderIdOf, createFolder, readClientFile, rootId as driveRootId } from './drive.js';
 import { summarize, conclude } from './ai.js';
 import { viewOn, viewMap, VIEW_KEYS, denyView } from './visibility.js';
@@ -422,24 +423,64 @@ app.post('/api/clients', ...staff, wrap(async (req, res) => {
 }));
 
 // Alta por ID del contacto en Avania Funnels (el cliente en el CRM de AVANIA): lee sus datos y precarga la ficha.
-app.post('/api/clients/from-funnels', ...staff, wrap(async (req, res) => {
-  const location = String(req.body.locationId || '').trim();
-  if (!ID_RE.test(location)) return res.status(400).json({ error: 'El ID de la subcuenta no parece válido (letras y números, sin espacios).' });
-  const dup = (await q('select id, name from clients where funnels_contact_id = $1', [location])).rows[0];
-  if (dup) return res.status(409).json({ error: `Esa subcuenta ya está dada de alta como «${dup.name}».`, id: dup.id });
-  const name = String(req.body.name || '').trim().slice(0, 200);
-  if (!name) return res.status(400).json({ error: 'Escribe el nombre de la empresa.' });
-  const category = String(req.body.category || '').trim().slice(0, 60);
-  if (!category) return res.status(400).json({ error: 'Elige la categoría.' });
-  const city = String(req.body.city || '').trim().slice(0, 120) || null;
+// Crea el cliente a partir del ID de su subcuenta de Avania Funnels (lo usan el botón «desde Funnels» y el webhook de «cliente ganado»).
+const bad = (status, message, extra = {}) => Object.assign(new Error(message), { status, ...extra });
+async function createFromFunnels({ location, name, category, city, sections, by }) {
+  location = String(location || '').trim();
+  if (!ID_RE.test(location)) throw bad(400, 'El ID de la subcuenta no parece válido (letras y números, sin espacios).');
+  const dup = (await q('select id, name, token from clients where funnels_contact_id = $1', [location])).rows[0];
+  if (dup) throw bad(409, `Esa subcuenta ya está dada de alta como «${dup.name}».`, { id: dup.id, token: dup.token, name: dup.name });
+  name = String(name || '').trim().slice(0, 200);
+  if (!name) throw bad(400, 'Escribe el nombre de la empresa.');
+  category = String(category || '').trim().slice(0, 60);
+  city = String(city || '').trim().slice(0, 120) || null;
   // El ID de la subcuenta hace de identificador del cliente en Funnels (enlace del submenú /c/{{location.id}}).
   const c = (await q('insert into clients (name, token, city, funnels_contact_id, sections) values ($1,$2,$3,$4,$5) returning *',
-    [name, randomToken(24), city, location, cleanSections(req.body.sections)])).rows[0];
-  await q('insert into categories (name) values ($1) on conflict do nothing', [category]);
-  await saveSection(c, 'proyecto', { categoria: category, funnels_location: location }, req.user.email);
-  await saveSection(c, 'clinica', sanitizeSection('clinica', { nombre_comercial: name, ...(city ? { ciudad: city } : {}) }, { team: true }) || {}, req.user.email);
-  for (const s of SUGGESTED) await q('insert into credentials (client_id, service, updated_by) values ($1,$2,$3)', [c.id, s, req.user.email]);
-  res.json({ client: c });
+    [name, randomToken(24), city, location, cleanSections(sections)])).rows[0];
+  if (category) await q('insert into categories (name) values ($1) on conflict do nothing', [category]);
+  await saveSection(c, 'proyecto', { ...(category ? { categoria: category } : {}), funnels_location: location }, by);
+  await saveSection(c, 'clinica', sanitizeSection('clinica', { nombre_comercial: name, ...(city ? { ciudad: city } : {}) }, { team: true }) || {}, by);
+  for (const s of SUGGESTED) await q('insert into credentials (client_id, service, updated_by) values ($1,$2,$3)', [c.id, s, by]);
+  return c;
+}
+app.post('/api/clients/from-funnels', ...staff, wrap(async (req, res) => {
+  const category = String(req.body.category || '').trim();
+  if (!category) return res.status(400).json({ error: 'Elige la categoría.' });
+  try { res.json({ client: await createFromFunnels({ location: req.body.locationId, name: req.body.name, category, city: req.body.city, sections: req.body.sections, by: req.user.email }) }); }
+  catch (e) { if (e.status === 400 || e.status === 409) return res.status(e.status).json({ error: e.message, ...(e.id ? { id: e.id } : {}) }); throw e; }
+}));
+
+// Webhook «cliente ganado» (lo llama n8n cuando el cliente pasa a Ganado en el pipeline de Funnels): crea el espacio y avisa por correo al equipo.
+// Protegido con una clave (HOOK_SECRET en .env) en la cabecera Authorization: Bearer … ; si el cliente ya existe no lo duplica.
+const safeEq = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
+app.post('/api/hooks/cliente-ganado', wrap(async (req, res) => {
+  const secret = process.env.HOOK_SECRET || '';
+  if (tooMany(`hook:${ip(req)}`, 60, 15 * 60e3)) return res.status(429).json({ error: 'Demasiadas peticiones' });
+  const given = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  if (secret.length < 24 || !given || !safeEq(given, secret)) return res.status(401).json({ error: 'No autorizado' });
+  const b = req.body || {};
+  const publicUrl = (path) => `${PUBLIC_URL}${path}`;
+  const answer = (c, created, emailed) => ({ ok: true, created, client: { id: c.id, name: c.name }, form_url: publicUrl(`/f/${c.token}`), space_url: publicUrl(`/#/c/${c.id}`), emailed });
+  let c, created = true;
+  try { c = await createFromFunnels({ location: b.locationId, name: b.name, category: b.category, city: b.city, by: 'webhook (cliente ganado)' }); }
+  catch (e) {
+    if (e.status === 409) { c = { id: e.id, name: e.name, token: e.token }; created = false; }
+    else if (e.status === 400) return res.status(400).json({ error: e.message });
+    else throw e;
+  }
+  if (!created) return res.json(answer(c, false, false));
+  const to = String(process.env.HOOK_NOTIFY || '').split(',').map((x) => x.trim()).filter(Boolean);
+  let emailed = false;
+  if (to.length) {
+    try {
+      await sendMail({ to: to.join(', '), subject: `Cliente ganado: ${c.name}`, title: `Cliente ganado: ${c.name}`,
+        paragraphs: ['El cliente ha pasado a «Ganado» y Space ya le ha creado su espacio.', `Subcuenta de Avania Funnels: ${b.locationId}${b.category ? ` · Categoría: ${b.category}` : ''}${b.city ? ` · ${b.city}` : ''}.`,
+          'Por hacer: revisar la ficha, mandarle el formulario de onboarding y comprobar que la subcuenta de Funnels está lista.'],
+        button: { label: 'Abrir la ficha en Space', url: publicUrl(`/#/c/${c.id}`) } });
+      emailed = true;
+    } catch (e) { console.error(`[hook] aviso por correo de ${c.name}: ${e.message}`); }
+  }
+  res.status(201).json(answer(c, true, emailed));
 }));
 
 // Zona restringida (Web y Google, Meta, credenciales): el equipo solo recibe esos datos tras volver a escribir la contraseña de su cuenta.

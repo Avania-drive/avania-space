@@ -1,6 +1,6 @@
 // Tareas priorizadas (de AVANIA y del cliente) y cronograma del proyecto, calculados a partir de lo que hay en la ficha.
 // Lo usan el panel de la agencia, el espacio del cliente y el informe por correo.
-import { FORM, BLOCKS, gates, isFilled } from './formdef.js';
+import { FORM, BLOCKS, gates, isFilled, shown } from './formdef.js';
 
 const ORDER = { alta: 0, media: 1, baja: 2 };
 const norm = (v) => ({ alta: 'alta', media: 'media', baja: 'baja' }[String(v || '').trim().toLowerCase()] || 'media');
@@ -38,7 +38,7 @@ export function tasksOf(sections, creds = {}, { allowed = null, dental = true, n
   for (const s of FORM.filter(open)) {
     const data = sections[s.key] || {};
     const del = new Set(Array.isArray(data._avania) ? data._avania : []);
-    const fs = fieldsOf(s).filter((f) => !f.optional && (dental || !f.dental) && !isFilled(f, data[f.k]) && !GATE_FIELDS.has(`${s.key}.${f.k}`));
+    const fs = fieldsOf(s).filter((f) => !f.optional && (dental || !f.dental) && shown(f, data) && !isFilled(f, data[f.k]) && !GATE_FIELDS.has(`${s.key}.${f.k}`));
     const mine = fs.filter((f) => f.owner !== 'team' && !del.has(f.k)), delegated = fs.filter((f) => f.owner !== 'team' && del.has(f.k)), theirs = fs.filter((f) => f.owner === 'team');
     const names = (l) => l.slice(0, 4).map((f) => f.label).join(', ') + (l.length > 4 ? `… (+${l.length - 4})` : '');
     if (mine.length) add({ who: 'cliente', priority: PRIO_CLIENT[s.key] || 'media', title: `Completar «${s.title}»`, detail: `Faltan ${mine.length}: ${names(mine)}`, section: s.key, area: areaOf(s.key)?.key, client_visible: true, kind: 'ficha' });

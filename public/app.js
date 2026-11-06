@@ -412,7 +412,7 @@ function newClient() {
   api('GET', '/api/categories').then((r) => { cats = r.categories; fillCats(''); }).catch(() => fillCats(''));
   const card = el('form', { class: 'card', onsubmit: async (e) => {
     e.preventDefault(); err.textContent = '';
-    try { const { client } = await api('POST', '/api/clients', { name: name.value.trim(), city: city.value.trim(), category: catSel.value, sections: picker.value() }); d.close(); location.hash = `#/c/${client.id}`; } catch (er) { err.textContent = er.message; }
+    try { const { client } = await api('POST', '/api/clients', { name: name.value.trim(), city: city.value.trim(), category: catSel.value, sections: picker.value() }); d.close(); clientCreated(client); } catch (er) { err.textContent = er.message; }
   } }, el('h2', {}, 'Nuevo cliente'),
   el('label', { for: 'nc-nombre' }, 'Nombre de la empresa'), name, el('label', { for: 'nc-ciudad', style: 'margin-top:10px' }, 'Ciudad (opcional)'), city,
   el('label', { for: 'nc-cat', style: 'margin-top:10px' }, 'Categoría'), catSel,
@@ -446,7 +446,7 @@ function newFromFunnels() {
     e.preventDefault(); err.textContent = ''; btn.disabled = true;
     try {
       const r = await api('POST', '/api/clients/from-funnels', { locationId: idIn.value.trim(), name: nameIn.value.trim(), city: cityIn.value.trim(), category: catSel.value, sections: picker.value() });
-      close(); toast('Cliente creado'); location.hash = `#/c/${r.client.id}`;
+      close(); clientCreated(r.client);
     } catch (er) { err.textContent = er.message; btn.disabled = false; }
   };
   const btn = el('button', { class: 'btn', type: 'submit' }, 'Crear cliente');
@@ -461,6 +461,20 @@ function newFromFunnels() {
     el('div', { class: 'secpick-box' }, picker.node), err,
     el('div', { class: 'row', style: 'margin-top:12px' }, btn, el('button', { class: 'btn ghost', type: 'button', onclick: close }, 'Cancelar')));
   const dlg = openModal(card, { label: 'Nuevo cliente desde Avania Funnels', cls: 'wide-modal sec-modal' });
+}
+
+// Tras crear un cliente: el enlace del formulario de alta, listo para copiar y mandar (y el del submenú de Funnels si viene de una subcuenta).
+function clientCreated(client) {
+  const copyTxt = (t, m) => navigator.clipboard.writeText(t).then(() => toast(m));
+  const url = `${location.origin}/f/${client.token}`, fl = client.funnels_contact_id ? `${location.origin}/c/{{location.id}}` : null;
+  const row = (title, hint, u, msg) => el('div', { style: 'margin-top:12px' }, el('strong', {}, title), el('p', { class: 'muted', style: 'margin:2px 0 6px;font-size:13px' }, hint),
+    el('div', { class: 'row' }, el('code', { class: 'mono grow', style: 'overflow-wrap:anywhere' }, u), el('button', { class: 'btn small', type: 'button', onclick: () => copyTxt(u, msg) }, 'Copiar')));
+  const card = el('div', { class: 'card' }, el('h2', { style: 'margin-top:0' }, `Cliente creado: ${client.name}`),
+    row('Formulario de onboarding', 'Este es el enlace que rellena el cliente, sin cuenta. Mándaselo por correo o WhatsApp.', url, 'Enlace del formulario copiado'),
+    fl ? row('Para el submenú de Avania Funnels', 'Es el mismo para todos los clientes: pégalo una vez en el menú personalizado y cada subcuenta abre su propia ficha.', fl, 'Enlace del submenú copiado') : '',
+    el('p', { class: 'muted', style: 'margin:12px 0 0;font-size:13px' }, 'Lo tendrás siempre en la ficha del cliente, pestaña Enlaces, y con el icono del enlace de arriba.'),
+    el('div', { class: 'row end', style: 'margin-top:14px' }, el('button', { class: 'btn', type: 'button', onclick: () => d.close() }, 'Ir a la ficha')));
+  const d = openModal(card, { label: 'Cliente creado', onClose: () => { location.hash = `#/c/${client.id}`; } });
 }
 
 // Panel lateral con la vista previa de un documento de Google Drive (DOCX, PDF, Docs…).

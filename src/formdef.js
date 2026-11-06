@@ -222,11 +222,12 @@ export const FORM = [
         { k: 'cuenta_pub', label: '¿Tenéis cuenta publicitaria activa?', type: 'tri' },
         { k: 'metodo_pago', label: 'Método de pago dado de alta en Meta', hint: 'Tarjeta, domiciliación...', type: 'text' },
         { k: 'presupuesto', label: 'Presupuesto mensual previsto para anuncios', hint: 'Una idea inicial; lo hablaremos juntos', type: 'text' },
-        { k: 'campanas_previas', label: '¿Habéis hecho campañas antes?', hint: 'Contadnos brevemente qué tal fue', type: 'textarea' },
+        { k: 'campanas_previas', label: '¿Habéis hecho campañas antes?', type: 'tri' },
       ] },
       { title: '0.0 Píxel de seguimiento', intro: 'Sin este código instalado no podemos lanzar la campaña. Es lo primero que revisamos.', fields: [
         { k: 'pixel', label: '¿Tenéis ya píxel de Meta instalado?', type: 'tri' },
-        { k: 'privacidad', label: '¿Tenéis política de privacidad publicada?', hint: 'Necesitamos el enlace exacto', type: 'text' },
+        { k: 'privacidad', label: '¿Tenéis política de privacidad publicada?', type: 'tri' },
+        { k: 'privacidad_url', label: 'Enlace de la política de privacidad', hint: 'El enlace exacto, tal como aparece en vuestra web', type: 'url', showIf: { k: 'privacidad', v: 'Sí' } },
         { k: 'cookies', label: '¿Tenéis banner de cookies?', type: 'tri' },
       ] },
       { title: '6.3 Páginas y perfiles', fields: [
@@ -368,7 +369,7 @@ const LAYOUT = {
   agenda: ['atienden:12', 'horario:12', 'cierres:12', 'huecos:6', 'duracion:6', 'horarios_primeras:12', 'antelacion:6', 'software_citas:6', 'fechas:12'],
   rodaje: ['doctor:6', 'cargo_doctor:6', 'ha_grabado:6', 'otros:6', 'dias_rodaje:7', 'franja:5', 'sala:5', 'ruido:5', 'fechas_rodaje:5', 'temas:12', 'guiones_url:12'],
   accesos: ['dominio:6', 'hosting:6', 'cms:6', 'resp_web:6', 'resp_web_contacto:6', 'google_alta:6', 'google_quien:6', 'ga_enlace:6', 'gtm_id:6', 'gmb_enlace:6', 'gsc_enlace:6', 'gads_id:6', 'tiktok:6', 'linkedin:6', 'youtube:6', 'otros_canales:12'],
-  meta: ['bm_creado:4', 'bm_acceso:4', 'bm_id:4', 'ads_id:4', 'cuenta_pub:4', 'metodo_pago:4', 'presupuesto:4', 'campanas_previas:12', 'pixel:6', 'cookies:6', 'privacidad:12',
+  meta: ['bm_creado:4', 'bm_acceso:4', 'bm_id:4', 'ads_id:4', 'cuenta_pub:4', 'metodo_pago:4', 'presupuesto:4', 'campanas_previas:4', 'pixel:6', 'cookies:6', 'privacidad:4', 'privacidad_url:8',
     'pagina_fb:6', 'perfil_ig:6', 'ig_profesional:6', 'ig_vinculado:6'],
   whatsapp: ['wa_business:6', 'wa_nuevo:6', 'wa_numero:6', 'grupo1:4', 'grupo2:4', 'grupo3:4', 'setex_numero:6', 'setex_enlace:6'],
   materiales: ['logos:12', 'colores:4', 'tipografias:4', 'tono:4', 'drive_materiales:12', 'subidos:6', 'faltan:6'],
@@ -399,6 +400,8 @@ export const SUGGESTED = ['Hosting', 'Web / CMS', 'Meta Business Manager', 'Inst
 const fieldsOf = (s) => s.groups.flatMap((g) => g.fields);
 
 export const DIAS = [['lunes', 'Lunes'], ['martes', 'Martes'], ['miercoles', 'Miércoles'], ['jueves', 'Jueves'], ['viernes', 'Viernes'], ['sabado', 'Sábado'], ['domingo', 'Domingo']];
+/** ¿Se enseña este campo? Los que dependen de otra respuesta (`showIf`) solo salen y cuentan cuando se da esa respuesta. */
+export const shown = (f, data) => !f.showIf || (data || {})[f.showIf.k] === f.showIf.v;
 export function isFilled(f, v) {
   if (f.type === 'calendario') return Array.isArray(v) && v.length > 0;
   if (f.type === 'horario') return !!v && typeof v === 'object' && Object.values(v).some((d) => d && (d.abre === true || ['m1', 'm2', 't1', 't2'].some((c) => String(d[c] || '').trim())));
@@ -418,7 +421,7 @@ export function progress(sections, allowed = null, dental = true) {
     if (allowed && !allowed.has(s.key)) continue;
     const data = sections[s.key] || {};
     const del = new Set(Array.isArray(data._avania) ? data._avania : []);   // «No lo sé, que lo haga Avania» cuenta como respondido
-    const fs = fieldsOf(s).filter((f) => !f.optional && (dental || !f.dental));
+    const fs = fieldsOf(s).filter((f) => !f.optional && (dental || !f.dental) && shown(f, data));
     const mine = fs.filter((f) => f.owner !== 'team'), theirs = fs.filter((f) => f.owner === 'team');
     if (mine.length) out[s.key] = { done: mine.filter((f) => isFilled(f, data[f.k]) || del.has(f.k)).length, total: mine.length };
     if (theirs.length) outTeam[s.key] = { done: theirs.filter((f) => isFilled(f, data[f.k])).length, total: theirs.length };

@@ -483,8 +483,8 @@ app.post('/api/hooks/cliente-ganado', wrap(async (req, res) => {
   res.status(201).json(answer(c, true, emailed));
 }));
 
-// Zona restringida (Web y Google, Meta, credenciales): el equipo solo recibe esos datos tras volver a escribir la contraseña de su cuenta.
-const RESTRICTED = new Set(['accesos', 'meta']);
+// Zona restringida (Web, Google, Meta, credenciales): el equipo solo recibe esos datos tras volver a escribir la contraseña de su cuenta.
+const RESTRICTED = new Set(['accesos', 'google', 'meta']);
 const recent = (req) => !!req.session?.reauth_until && new Date(req.session.reauth_until) > new Date();
 const restrictedGuard = wrap((req, res, next) => (RESTRICTED.has(req.params.key) ? requirePasswordRecent(req, res, next) : next()));
 

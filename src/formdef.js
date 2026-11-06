@@ -182,7 +182,7 @@ export const FORM = [
     ],
   },
   {
-    key: 'accesos', num: '5', title: 'Web, dominio y Google (enlaces)',
+    key: 'accesos', num: '5', title: 'Web, dominio y redes (accesos)',
     intro: 'Algunos accesos no los conoceréis de primera mano. No pasa nada: dadnos el contacto de quien lleva vuestra web o vuestro marketing y lo hablamos con esa persona. Las contraseñas, si hacen falta, van en la pestaña Credenciales.',
     groups: [
       { title: '0.0 Web, dominio y hosting', intro: 'Si tenéis WordPress: dad de alta como administrador a marketing@avania.es. Con eso nos basta.', fields: [
@@ -192,15 +192,6 @@ export const FORM = [
         { k: 'resp_web', label: 'Responsable de la web', hint: 'Empresa o persona que la mantiene', type: 'text' },
         { k: 'resp_web_contacto', label: 'Correo y teléfono de esa persona', type: 'text' },
       ] },
-      { title: '0.0 Google', intro: 'Dad acceso de administrador a marketing@avania.es en Google Analytics, Google Tag Manager y Google My Business (como gestor).', fields: [
-        { k: 'google_alta', label: '¿Los tenéis dados de alta?', type: 'tri' },
-        { k: 'google_quien', label: 'Si no, ¿quién los gestiona?', type: 'text' },
-        { k: 'ga_enlace', label: 'Enlace o ID de Google Analytics', hint: 'El enlace de la propiedad o el identificador (G-XXXXXXXXXX)', type: 'text' },
-        { k: 'gtm_id', label: 'ID de Google Tag Manager', hint: 'GTM-XXXXXXX', type: 'text' },
-        { k: 'gmb_enlace', label: 'Perfil de empresa en Google (antes My Business)', hint: 'Enlace a la ficha que sale en Google Maps', type: 'url' },
-        { k: 'gsc_enlace', label: 'Google Search Console', hint: 'Enlace o dominio verificado, si lo tenéis', type: 'text' },
-        { k: 'gads_id', label: 'ID de cuenta de Google Ads', hint: 'Si ya habéis anunciado en Google (123-456-7890)', type: 'text' },
-      ] },
       { title: '0.0 Otras redes y canales', intro: 'Enlaces a cualquier otro canal en el que estéis presentes.', fields: [
         { k: 'tiktok', label: 'TikTok', type: 'text' },
         { k: 'linkedin', label: 'LinkedIn', type: 'url' },
@@ -209,6 +200,34 @@ export const FORM = [
       ] },
     ],
   },
+  {
+    key: 'google', num: '5', title: 'Google: Analytics, Tag Manager, Ads y Google My Business',
+    intro: 'Dad acceso de administrador a marketing@avania.es en Google Analytics, Google Tag Manager y Google My Business (como gestor). Si no sabéis cómo, decídnoslo y lo vemos juntos. Las contraseñas, si hacen falta, van en la pestaña Credenciales.',
+    groups: [
+      { title: '0.0 Cuenta y herramientas de Google', intro: 'Analytics mide las visitas, Tag Manager coloca los códigos de seguimiento y Search Console enseña cómo os encuentra la gente en Google.', fields: [
+        { k: 'google_alta', label: '¿Los tenéis dados de alta?', type: 'tri' },
+        { k: 'google_quien', label: 'Si no, ¿quién los gestiona?', type: 'text' },
+        { k: 'ga_enlace', label: 'Enlace o ID de Google Analytics', hint: 'El enlace de la propiedad o el identificador (G-XXXXXXXXXX)', type: 'text' },
+        { k: 'gtm_id', label: 'ID de Google Tag Manager', hint: 'GTM-XXXXXXX', type: 'text' },
+        { k: 'gsc_enlace', label: 'Google Search Console', hint: 'Enlace o dominio verificado, si lo tenéis', type: 'text' },
+        { k: 'gads_id', label: 'ID de cuenta de Google Ads', hint: 'Si ya habéis anunciado en Google (123-456-7890)', type: 'text' },
+      ] },
+      { title: '0.0 Google My Business (perfil de empresa)', intro: 'La ficha que sale en Google Maps y en el buscador cuando os buscan. Debajo de cada dato verás lo que tenemos en vuestra ficha, para comprobar que coincide con lo que sale en Google.', fields: [
+        { k: 'gmb_estado', label: '¿Tenéis ficha en Google My Business?', type: 'tri' },
+        { k: 'gmb_enlace', label: 'Enlace a vuestra ficha en Google', hint: 'El enlace que sale al compartirla desde Google Maps', type: 'url', showIf: { k: 'gmb_estado', v: 'Sí' } },
+        { k: 'gmb_verificada', label: '¿Está verificada?', type: 'tri', showIf: { k: 'gmb_estado', v: 'Sí' } },
+        { k: 'gmb_acceso', label: '¿Habéis dado acceso de gestor a marketing@avania.es?', type: 'tri', showIf: { k: 'gmb_estado', v: 'Sí' } },
+        { k: 'gmb_categoria', label: 'Categoría principal en Google', hint: 'Por ejemplo: Clínica dental', type: 'text', showIf: { k: 'gmb_estado', v: 'Sí' } },
+        { k: 'gmb_resenas', label: 'Número de reseñas', type: 'number', showIf: { k: 'gmb_estado', v: 'Sí' } },
+        { k: 'gmb_valoracion', label: 'Valoración media (de 1 a 5)', type: 'text', showIf: { k: 'gmb_estado', v: 'Sí' } },
+        { k: 'gmb_nombre', label: 'Nombre que sale en Google', type: 'text', ref: ['clinica', 'nombre_comercial'], showIf: { k: 'gmb_estado', v: 'Sí' } },
+        { k: 'gmb_direccion', label: 'Dirección que sale en Google', type: 'text', ref: ['clinica', 'direccion'], showIf: { k: 'gmb_estado', v: 'Sí' } },
+        { k: 'gmb_telefono', label: 'Teléfono que sale en Google', type: 'text', ref: ['clinica', 'telefono'], showIf: { k: 'gmb_estado', v: 'Sí' } },
+        { k: 'gmb_web', label: 'Web que sale en Google', type: 'text', ref: ['clinica', 'web'], showIf: { k: 'gmb_estado', v: 'Sí' } },
+      ] },
+    ],
+  },
+
   {
     key: 'meta', num: '6', title: 'Meta: publicidad y redes (enlaces)',
     groups: [
@@ -324,12 +343,12 @@ export const FORM = [
   },
 ];
 
-const SHORT = {'clinica': 'Datos', 'zona': 'Área de influencia', 'agenda': 'Horarios', 'materiales': 'Marca', 'mercado': 'Clientes y ofertas', 'oferta': 'Análisis de AVANIA', 'negocio': 'Objetivos', 'accesos': 'Web y Google', 'meta': 'Meta', 'whatsapp': 'WhatsApp', 'cronograma': 'Acciones', 'rodaje': 'Rodaje', 'formacion': 'Formación', 'cierre': 'Revisión final', 'proyecto': 'Proyecto', 'avania': 'Quién es quién'};   // nombres cortos para el menú
+const SHORT = {'clinica': 'Datos', 'zona': 'Área de influencia', 'agenda': 'Horarios', 'materiales': 'Marca', 'mercado': 'Clientes y ofertas', 'oferta': 'Análisis de AVANIA', 'negocio': 'Objetivos', 'accesos': 'Web', 'google': 'Google', 'meta': 'Meta', 'whatsapp': 'WhatsApp', 'cronograma': 'Acciones', 'rodaje': 'Rodaje', 'formacion': 'Formación', 'cierre': 'Revisión final', 'proyecto': 'Proyecto', 'avania': 'Quién es quién'};   // nombres cortos para el menú
 // Las cinco áreas del alta, en el orden en que se rellenan. Cada una lleva su barra de avance.
 export const BLOCKS = [
   { key: 'empresa', title: 'La empresa y quién la forma', short: 'Empresa', sections: ['clinica', 'zona', 'agenda', 'materiales'] },
   { key: 'mercado', title: 'Sus clientes, competencia y ofertas', short: 'Análisis', sections: ['mercado', 'oferta', 'negocio'] },
-  { key: 'tecnico', title: 'Accesos técnicos', short: 'Accesos', sections: ['accesos', 'meta', 'whatsapp'] },
+  { key: 'tecnico', title: 'Accesos técnicos', short: 'Accesos', sections: ['accesos', 'google', 'meta', 'whatsapp'] },
   { key: 'cronograma', title: 'Fechas de acciones', short: 'Fechas', sections: ['cronograma', 'rodaje', 'formacion', 'cierre'] },
   { key: 'nosotros', title: 'Nosotros: AVANIA', short: 'Avania', sections: ['proyecto', 'avania'] },
 ];
@@ -368,7 +387,8 @@ const LAYOUT = {
   zona: ['radio:4', 'localidades:4', 'zonas_excluir:4'],
   agenda: ['atienden:12', 'horario:12', 'cierres:12', 'huecos:6', 'duracion:6', 'horarios_primeras:12', 'antelacion:6', 'software_citas:6', 'fechas:12'],
   rodaje: ['doctor:6', 'cargo_doctor:6', 'ha_grabado:6', 'otros:6', 'dias_rodaje:7', 'franja:5', 'sala:5', 'ruido:5', 'fechas_rodaje:5', 'temas:12', 'guiones_url:12'],
-  accesos: ['dominio:6', 'hosting:6', 'cms:6', 'resp_web:6', 'resp_web_contacto:6', 'google_alta:6', 'google_quien:6', 'ga_enlace:6', 'gtm_id:6', 'gmb_enlace:6', 'gsc_enlace:6', 'gads_id:6', 'tiktok:6', 'linkedin:6', 'youtube:6', 'otros_canales:12'],
+  accesos: ['dominio:6', 'hosting:6', 'cms:6', 'resp_web:6', 'resp_web_contacto:6', 'tiktok:6', 'linkedin:6', 'youtube:6', 'otros_canales:12'],
+  google: ['google_alta:6', 'google_quien:6', 'ga_enlace:6', 'gtm_id:6', 'gsc_enlace:6', 'gads_id:6', 'gmb_estado:4', 'gmb_enlace:8', 'gmb_verificada:4', 'gmb_acceso:4', 'gmb_categoria:4', 'gmb_resenas:4', 'gmb_valoracion:4', 'gmb_nombre:6', 'gmb_direccion:6', 'gmb_telefono:6', 'gmb_web:6'],
   meta: ['bm_creado:4', 'bm_acceso:4', 'bm_id:4', 'ads_id:4', 'cuenta_pub:4', 'metodo_pago:4', 'presupuesto:4', 'campanas_previas:4', 'pixel:6', 'cookies:6', 'privacidad:4', 'privacidad_url:8',
     'pagina_fb:6', 'perfil_ig:6', 'ig_profesional:6', 'ig_vinculado:6'],
   whatsapp: ['wa_business:6', 'wa_nuevo:6', 'wa_numero:6', 'grupo1:4', 'grupo2:4', 'grupo3:4', 'setex_numero:6', 'setex_enlace:6'],

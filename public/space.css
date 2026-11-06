@@ -983,3 +983,11 @@ h1.editname:hover .editpen, h1.editname:focus-visible .editpen { opacity: 1; } h
 .secpick-box { max-height: 46vh; overflow: auto; padding: 4px 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 @media (max-width: 560px) { .secpick-cols { grid-template-columns: 1fr; } }
 .modal.sec-modal .card { max-height: 92vh; overflow: auto; }
+
+/* Dato conectado con la ficha de la empresa (p. ej. Google My Business) */
+.fref { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 4px; font-size: 12.5px; }
+.fref .fref-ok { color: #047857; } .fref .fref-diff { color: #b45309; }
+
+/* Acceso a Facebook personal (arriba de Meta) */
+.fbcard { margin-bottom: 14px; } .fbgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .fbgrid label { margin: 0; font-weight: 500; font-size: 13px; display: grid; gap: 4px; }
+@media (max-width: 640px) { .fbgrid { grid-template-columns: 1fr; } }

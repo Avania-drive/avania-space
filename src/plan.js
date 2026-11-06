@@ -5,7 +5,7 @@ import { FORM, BLOCKS, gates, isFilled, shown } from './formdef.js';
 const ORDER = { alta: 0, media: 1, baja: 2 };
 const norm = (v) => ({ alta: 'alta', media: 'media', baja: 'baja' }[String(v || '').trim().toLowerCase()] || 'media');
 // Prioridad por sección: lo que bloquea el lanzamiento, primero.
-const PRIO_CLIENT = { meta: 'alta', accesos: 'alta', whatsapp: 'alta', rodaje: 'alta', formacion: 'alta', clinica: 'media', zona: 'media', agenda: 'media', materiales: 'media', mercado: 'media', cierre: 'baja' };
+const PRIO_CLIENT = { meta: 'alta', accesos: 'alta', google: 'alta', whatsapp: 'alta', rodaje: 'alta', formacion: 'alta', clinica: 'media', zona: 'media', agenda: 'media', materiales: 'media', mercado: 'media', cierre: 'baja' };
 const PRIO_TEAM = { proyecto: 'alta', negocio: 'alta', oferta: 'alta', avania: 'media' };
 const GATE_FIELDS = new Set(['meta.bm_acceso', 'meta.pixel', 'whatsapp.wa_numero', 'whatsapp.wa_nuevo', 'rodaje.dias_rodaje', 'formacion.fechas_formacion']);
 const fieldsOf = (s) => s.groups.flatMap((g) => g.fields);

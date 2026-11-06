@@ -34,7 +34,7 @@ function highlights(S, creds) {
       line('Valor medio de un cliente', g('negocio', 'valor_medio') && `${g('negocio', 'valor_medio')} €`),
     ],
     tecnico: [
-      line('Dominio', g('accesos', 'dominio')), line('Google', g('accesos', 'google_alta')),
+      line('Dominio', g('accesos', 'dominio')), line('Google', g('google', 'google_alta')),
       line('Business Manager', g('meta', 'bm_acceso') ? `acceso concedido: ${g('meta', 'bm_acceso')}` : null), line('Píxel', g('meta', 'pixel')),
       line('Instagram', g('meta', 'perfil_ig')), line('WhatsApp de clientes', g('whatsapp', 'wa_numero') || (g('whatsapp', 'wa_nuevo') === 'Sí' ? 'número nuevo gestionado por AVANIA' : null)),
       line('Avania Setex', g('whatsapp', 'setex_numero')),

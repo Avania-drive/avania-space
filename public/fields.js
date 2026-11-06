@@ -242,7 +242,7 @@ function groupIcon(title, i) {
 
 let searchName = '';
 let watchers = [];
-export function renderSection(sec, data, { team, save, preview, clientName, clientId }) {
+export function renderSection(sec, data, { team, save, preview, clientName, clientId, refs = null }) {
   searchName = clientName || ''; ctxClient = clientId || null; watchers = [];
   const wrap = el('div');
   const status = el('div', { class: 'saved', role: 'status', 'aria-live': 'polite' });
@@ -298,6 +298,21 @@ export function renderSection(sec, data, { team, save, preview, clientName, clie
       }
       const big = ['table', 'horario', 'docs', 'fichas', 'calendario'].includes(f.type);
       node.classList.add('w' + (f.w || (big || f.search ? 12 : 6)));
+      // Campo «conectado» con otro de la ficha (p. ej. lo que sale en Google vs. la dirección de Empresa › Datos): enseña el dato de la ficha,
+      // avisa si no coincide y deja copiarlo con un clic.
+      if (f.ref && refs) {
+        const [rs, rk] = f.ref, norm = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+        const inp = node.querySelector('input'), note = el('div', { class: 'fref' });
+        node.append(note);
+        const upd = () => {
+          const ref = String((refs[rs] || {})[rk] || '').trim(), mine = String(data[f.k] || '').trim();
+          if (!ref) { note.replaceChildren(el('span', { class: 'muted' }, 'Este dato todavía no está en la ficha de la empresa.')); return; }
+          const same = mine && norm(mine) === norm(ref) ? el('b', { class: 'fref-ok' }, '✓ Coincide con la ficha') : mine ? el('b', { class: 'fref-diff' }, '≠ Distinto de la ficha') : '';
+          note.replaceChildren(el('span', { class: 'muted' }, 'En la ficha: '), el('span', {}, ref), same,
+            mine && norm(mine) === norm(ref) ? '' : el('button', { type: 'button', class: 'btn ghost small', onclick: () => { if (inp) inp.value = ref; change(f.k, ref); upd(); } }, 'Usar el de la ficha'));
+        };
+        watchers.push(upd); upd();
+      }
       if (f.showIf) { const upd = () => { node.style.display = data[f.showIf.k] === f.showIf.v ? '' : 'none'; }; watchers.push(upd); upd(); }   // campo que depende de otra respuesta
       if (f.calside) node.classList.add('calside'); if (f.side) node.classList.add('side');
       if (f.owner !== 'team' && !['table', 'horario', 'docs', 'fichas', 'calendario', 'check'].includes(f.type) && node.lastElementChild) {

@@ -53,6 +53,39 @@ export function sectionPicker(fd, { defaults = null, initial = null } = {}) {
     reset: (d) => { touched = false; def = d; set(d || all); } };
 }
 
+
+// Acceso a la cuenta personal de Facebook (usuario y contraseña) en lo alto de Meta. No se guarda en la ficha: va a la Bóveda
+// como credencial «Facebook personal», con la contraseña cifrada (la misma que se ve y se gestiona en Contraseñas).
+export function fbPersonalCard({ list, create, update }) {
+  const SERVICE = 'Facebook personal';
+  const user = el('input', { type: 'text', autocomplete: 'off', 'aria-label': 'Usuario de Facebook personal', placeholder: 'Correo o teléfono con el que entra a Facebook' });
+  const pass = el('input', { type: 'password', autocomplete: 'new-password', 'aria-label': 'Contraseña de Facebook personal', placeholder: 'Contraseña' });
+  const msg = el('span', { class: 'muted', role: 'status' });
+  let row = null, timer = null, loaded = false;
+  const save = async () => {
+    if (!loaded) return;
+    const u = user.value.trim(), p = pass.value;
+    if (!u && !p) return;
+    msg.className = 'muted'; msg.textContent = 'Guardando…';
+    try {
+      if (!row) { const r = await create({ service: SERVICE, username: u, password: p || undefined }); row = r.credential; }
+      else { const r = await update(row.id, { username: u, ...(p ? { password: p } : {}) }); row = r.credential || { ...row, username: u, has_password: row.has_password || !!p }; }
+      if (p) { pass.value = ''; pass.placeholder = 'Contraseña guardada (escribe otra para cambiarla)'; }
+      msg.className = 'saved ok'; msg.textContent = 'Guardado ✓ (cifrado en la Bóveda)';
+    } catch (e) { msg.className = 'err'; msg.textContent = e.message; }
+  };
+  const later = () => { clearTimeout(timer); timer = setTimeout(save, 900); };
+  user.addEventListener('input', later); pass.addEventListener('input', later);
+  Promise.resolve(list()).then((r) => {
+    row = (r.credentials || []).find((c) => c.service === SERVICE) || null;
+    if (row) { user.value = row.username || ''; if (row.has_password) pass.placeholder = 'Contraseña guardada (escribe otra para cambiarla)'; }
+    loaded = true;
+  }).catch((e) => { msg.className = 'err'; msg.textContent = e.message; });
+  return el('section', { class: 'card fbcard' }, el('h3', { style: 'margin:0;font-size:15px' }, 'Acceso a Facebook personal'),
+    el('p', { class: 'muted', style: 'margin:2px 0 10px;font-size:13px' }, 'El usuario y la contraseña de la cuenta personal de Facebook que administra la página y los anuncios. Se guardan cifrados en la Bóveda, no en la ficha.'),
+    el('div', { class: 'fbgrid' }, el('label', {}, 'Usuario', user), el('label', {}, 'Contraseña', pass)), el('div', { style: 'margin-top:6px' }, msg));
+}
+
 // ───────── Panel general ─────────
 export async function panelView(view, go) {
   const [d, { requests }] = await Promise.all([api('GET', '/api/dashboard'), api('GET', '/api/access-requests')]);

@@ -1,5 +1,5 @@
 import { el, api, renderSection, renderCredentials, helpButton } from './fields.js';
-import { scopeForm, agencyOnly } from './extra.js';
+import { scopeForm, agencyOnly, fbPersonalCard } from './extra.js';
 import { areasNodes, taskList, timelineNode, phasesNode, bar } from './clientview.js';
 
 const portal = location.pathname.startsWith('/portal');   // dentro del portal el formulario usa la sesión; por enlace, el token
@@ -78,8 +78,9 @@ function sectionView(t) {
   helpSlot.replaceChildren(helpButton(ayuda[t.key], t.title) || '');
   if (t.sec) {
     const data = state.sections[t.key] || (state.sections[t.key] = {});
+    if (t.key === 'meta' && state.role !== 'miembro') main.append(fbPersonalCard({ list: async () => ({ credentials: state.credentials }), create: async (b) => { const r = await api('POST', `${base}/credentials`, b); state.credentials.push(r.credential); return r; }, update: async (id, b) => api('PUT', `${base}/credentials/${id}`, b) }));
     main.append(renderSection(t.sec, data, {
-      team: false,
+      team: false, refs: state.sections,
       save: async (partial) => { const r = await api('PUT', `${base}/sections/${t.key}`, partial); state.progress = r.progress; paintProgress(); },
     }));
   } else {

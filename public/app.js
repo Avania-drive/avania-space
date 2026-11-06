@@ -1,7 +1,7 @@
 import { DATE_ATTRS, el, api, toast, renderSection, renderCredentials, helpBlock, helpButton, toUrl, appIcon, appName, openModal, askText, askConfirm, askPhrase, notice, fmtDate } from './fields.js';
 import { embedUrl } from './preview.js';
 import { homeNodes, docsNodes, areasNodes, taskColumns, timelineNode, phasesNode, bar, driveFilesNode } from './clientview.js';
-import { kpisNode, scopeForm, partOf, panelView, configView, notesTab, linksCard, docsTab, lastChange, avatar, logoButton, clientUsersTab, vaultView, resultsTab, pipelineTools, agencyOnly, zonaCard, sectionPicker } from './extra.js';
+import { kpisNode, scopeForm, partOf, panelView, configView, notesTab, linksCard, docsTab, lastChange, avatar, logoButton, clientUsersTab, vaultView, resultsTab, pipelineTools, agencyOnly, zonaCard, sectionPicker, fbPersonalCard } from './extra.js';
 
 const app = document.getElementById('app');
 let me = null, formDef = null, ayuda = {};
@@ -123,6 +123,7 @@ const ICONS = {
   materiales: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
   fechas: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   accesos: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
+  google: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/>',
   meta: '<path d="M3 11v3l12 5V6zM15 8c3 .5 5 2 5 4s-2 3.500-5 4M7 16l1.500 4h3L10 17"/>',
   zona: '<path d="M12 21s7-6.500 7-12a7 7 0 0 0-14 0c0 5.500 7 12 7 12z"/><circle cx="12" cy="9" r="2.500"/>',
   agenda: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 16l2 2 4-4"/>',
@@ -510,7 +511,7 @@ async function clientView(id, tab) {
   const loc = String((sections.proyecto || {}).funnels_location || '').trim();
   const funnelsUrl = /^[A-Za-z0-9]{8,40}$/.test(loc) ? `https://app.avania.marketing/v2/location/${loc}/dashboard` : null;
   // Quién ve cada cosa: navy = solo la agencia; gris = lo ve (y rellena) el cliente.
-  const access = ['accesos', 'meta', 'credenciales', 'enlaces', 'registro'].map((k) => tabs.find((x) => x.key === k)).filter(Boolean);   // la zona restringida y la gestión del enlace
+  const access = ['accesos', 'google', 'meta', 'credenciales', 'enlaces', 'registro'].map((k) => tabs.find((x) => x.key === k)).filter(Boolean);   // la zona restringida y la gestión del enlace
   const PAGE_SCOPE = { plan: 'client', resumen: 'agency', resultados: 'client', personas: 'client', horarios: 'client', equipo: 'agency', notas: 'agency', documentos: 'agency', credenciales: 'client', enlaces: 'agency', registro: 'agency' };
   const scopeOf = (x) => (x.key in views ? (views[x.key] ? 'client' : 'agency') : x.sec ? (agencyOnly(x.sec) ? 'agency' : 'client') : PAGE_SCOPE[x.key]);
   const uniform = (items) => (items.every((i) => i.scope === items[0].scope) ? items[0].scope : null);
@@ -577,7 +578,7 @@ async function clientView(id, tab) {
     col.append(el('h2', { style: 'margin:22px 0 8px' }, 'Notas'));
     await notesTab(col, id);
     main.append(col);
-  } else if (t.sec && !['accesos', 'meta'].includes(t.key)) {   // Web y Google y Meta se abren en la zona protegida
+  } else if (t.sec && !['accesos', 'google', 'meta'].includes(t.key)) {   // Web, Google y Meta se abren en la zona protegida
     const data = sections[t.key] || (sections[t.key] = {});
     const hasDocs = t.sec.groups.some((g) => g.fields.some((f) => f.type === 'docs' || f.type === 'fichas'));
     const pv = hasDocs ? previewPane() : null;
@@ -603,10 +604,10 @@ async function clientView(id, tab) {
     main.append(renderSection(secDef, data, { team: true, clientName: client.name, clientId: id, save: saveSec, preview: pv && pv.show }));
     if (t.key === 'zona') zonaCard(main, id);
 
-  } else if (['accesos', 'meta', 'credenciales'].includes(t.key)) {
-    // Zona restringida: Web y Google, Meta y las contraseñas. Se abre con la contraseña de la cuenta (10 minutos de uso).
+  } else if (['accesos', 'google', 'meta', 'credenciales'].includes(t.key)) {
+    // Zona restringida: Web, Google, Meta y las contraseñas. Se abre con la contraseña de la cuenta (10 minutos de uso).
     const nTab = (k) => { const p = progress.sections[k]; return p ? ` · ${p.done}/${p.total}` : ''; };
-    main.prepend(el('div', { class: 'subtabs', role: 'group', 'aria-label': 'Zona restringida' }, [['accesos', 'Web y Google'], ['meta', 'Meta'], ['credenciales', 'Contraseñas']].map(([k, l]) =>
+    main.prepend(el('div', { class: 'subtabs', role: 'group', 'aria-label': 'Zona restringida' }, [['accesos', 'Web'], ['google', 'Google'], ['meta', 'Meta'], ['credenciales', 'Contraseñas']].map(([k, l]) =>
       el('a', { class: 'subtab' + (k === t.key ? ' on' : ''), href: `#/c/${id}/${k}`, 'aria-current': k === t.key ? 'page' : null }, l, k === 'credenciales' ? '' : nTab(k)))));
     const box = el('div'); main.append(box);
     if (me.can_see_passwords && !me.mfa_enabled) main.prepend(el('div', { class: 'banner' }, 'Para ver o copiar contraseñas activa la doble verificación en ', el('a', { href: '#/seguridad' }, 'Seguridad'), '.'));
@@ -619,7 +620,8 @@ async function clientView(id, tab) {
         const r = await guard(() => api('GET', `/api/clients/${id}/restricted`))();
         Object.assign(sections, r.sections);
         const data = sections[t.key] || (sections[t.key] = {});
-        return box.replaceChildren(renderSection(t.sec, data, { team: true, clientName: client.name, save: guard((p) => api('PUT', `/api/clients/${id}/sections/${t.key}`, p)) }));
+        const fb = t.key === 'meta' ? [fbPersonalCard({ list: guard(() => api('GET', `/api/clients/${id}/credentials`)), create: guard((b) => api('POST', `/api/clients/${id}/credentials`, b)), update: guard((cid, b) => api('PUT', `/api/credentials/${cid}`, b)) })] : [];
+        return box.replaceChildren(...fb, renderSection(t.sec, data, { team: true, clientName: client.name, refs: sections, save: guard((p) => api('PUT', `/api/clients/${id}/sections/${t.key}`, p)) }));
       }
       renderCredentials(box, {
       mode: 'team', services: formDef.services, canSee: me.can_see_passwords,
@@ -638,7 +640,7 @@ async function clientView(id, tab) {
         e.preventDefault(); err.textContent = '';
         try { await api('POST', '/api/reauth', { password: pw.value }); open(); } catch (er) { err.textContent = er.message; pw.value = ''; pw.focus(); }
       } }, el('h2', { style: 'margin-top:0' }, 'Zona protegida'),
-      el('p', { class: 'muted' }, 'Web y Google, Meta y las contraseñas de este cliente son de acceso restringido. Para abrirlas escribe de nuevo la contraseña de tu cuenta; quedan abiertas mientras las uses y se cierran tras 10 minutos sin tocarlas.'),
+      el('p', { class: 'muted' }, 'Web, Google, Meta y las contraseñas de este cliente son de acceso restringido. Para abrirlas escribe de nuevo la contraseña de tu cuenta; quedan abiertas mientras las uses y se cierran tras 10 minutos sin tocarlas.'),
       el('label', { for: 'lock-pw' }, 'Contraseña'), pw, err, el('button', { class: 'btn', style: 'width:100%;margin-top:12px' }, 'Abrir zona protegida')));
       pw.focus();
     };
@@ -892,7 +894,7 @@ async function clientPreview({ id, tab, client, views = {}, sections, fd, dental
       renderCredentials(box, { mode: 'client', services: formDef.services, list: () => api('GET', `/api/clients/${id}/credentials`), create: (b) => api('POST', `/api/clients/${id}/credentials`, b), update: (cid, b) => api('PUT', `/api/credentials/${cid}`, b) });
     });
   } else if (t.sec) {
-    const secData = async () => (['accesos', 'meta'].includes(t.key) ? (await api('GET', `/api/clients/${id}/restricted`)).sections[t.key] : sections[t.key]) || {};
+    const secData = async () => (['accesos', 'google', 'meta'].includes(t.key) ? (await api('GET', `/api/clients/${id}/restricted`)).sections[t.key] : sections[t.key]) || {};
     await unlocked(async () => { const data = await secData(); put(el('h1', {}, `${t.sec.num} ${t.sec.title}`), renderSection(t.sec, data, { team: false, save: saveFor(t.key) })); });
   }
   view.replaceChildren(bar, main);

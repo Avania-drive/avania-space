@@ -11,6 +11,7 @@ import { zonaStudy } from './zona.js';
 import { FORM } from './formdef.js';
 import { audit } from './audit.js';
 import { allowedClients } from './people.js';
+import { publicFases } from './plan.js';
 
 export const CCOOKIE = 'sp_client';
 const DAYS = 14;
@@ -135,7 +136,7 @@ export function mountPortal(app, d) {
       role, dental: tpl.dental, ...(({ pct, areas }) => ({ progress: pct, areas }))(forClientProgress(progress(sections, tpl.allowed, tpl.dental))),
       next: todo.map((g) => ({ key: g.key, ask: g.ask, why: g.why, section: g.section })),
       tasks: forClientTasks(tasksOf(sections, cr, { allowed: tpl.allowed, dental: tpl.dental })).filter((t) => (isResp || t.section !== 'credenciales') && viewOn(c, t.section === 'proceso' ? 'plan' : t.section)),
-      timeline: viewOn(c, 'plan') ? timelineOf(sections) : [], fases: viewOn(c, 'plan') ? fasesOf(sections) : null,
+      timeline: viewOn(c, 'plan') ? timelineOf(sections) : [], fases: viewOn(c, 'plan') ? publicFases(fasesOf(sections)) : null,
       links: links.map((l) => ({ id: l.id, type: l.type, has_access: l.has_access, open: l.url || l.login_url || types[l.type] || null, requested: reqs.has(l.id) })),
       notes: (await q('select id, body, author, created_at from client_notes where client_id = $1 and visible order by created_at desc limit 20', [c.id])).rows,
       drive: viewOn(c, 'documentos') && /^https?:\/\//i.test(drive) ? drive : null, views: viewMap(c),

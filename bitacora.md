@@ -656,3 +656,35 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 
 ## 6-nov — ClickUp: inicio posterior al fin
 - Si una tarea llega con el inicio después del fin (ClickUp lo rechaza), el inicio se lleva al día del fin y se avisa en el resultado. Caso real: «Documentos de investigación» de Paula Fernández (inicio 2/11, fin 29/10): las fechas siguen mal en Space, hay que corregirlas.
+
+## 6-nov — ClickUp: Paula Fernández, tareas a su lista y fechas de tareas hechas
+- Error mío: en una sincronización anterior (antes del selector) se creó la lista «Tareas del proyecto» dentro del Space de Paula, que ya tenía «Lista Tareas Clinica». Las 19 tareas (15 + 4 subtareas) se movieron a «Lista Tareas Clinica», la lista vacía creada por error se borró y Space guarda ese destino. Revisado: ningún otro cliente sincronizado tiene una lista creada por Space (Enzo ya iba a «CANAL ENZO»).
+- Una tarea ya hecha con las fechas al revés ya no da error ni se avisa de ello: las fechas no importan, se crea/actualiza como completada.
+
+## 6-nov — Tareas: barra de arrastre; resúmenes de la IA: negritas, competidores y fallo de «ninguna conclusión»
+- **Tareas:** las flechas ↑↓ desaparecen. Cada tarea y subtarea lleva una barra con puntitos a la izquierda: se arrastra (ratón o dedo) y la posición se guarda al soltar; con la barra enfocada, ↑ ↓ del teclado la mueven. Las subtareas se reordenan dentro de su tarea.
+- **Resúmenes y conclusiones con formato:** la IA escribe Markdown simple (frase inicial en negrita + viñetas «**Etiqueta:** texto») y la ficha lo pinta con negritas y viñetas, sin asteriscos (`richText` en fields.js: solo crea nodos, no inserta HTML). «Editar texto» abre el texto crudo para corregirlo; «Listo» vuelve a la vista maquetada. El cliente lo ve igual en solo lectura. Los textos antiguos con «* » también se pintan bien.
+- **Competencia › Resumir de nuevo:** además del resumen, la IA saca los competidores del análisis (nombre, web o redes, zona, qué hacen mejor, qué hace mejor el cliente) y se guardan en «Sus clientes, competencia y ofertas › Competidores principales» (`mergeCompetidores`, máx. 12 filas): lo ya escrito se respeta, se rellenan huecos y se añaden los que faltan. El aviso dice cuántos nuevos y cuántos completados. Autor del cambio: «correo (IA)».
+- **«La IA no ha devuelto ninguna conclusión»:** el modelo gastaba el límite de respuesta «pensando» y devolvía el texto vacío o cortado (reproducido con Paula Fernández). Ahora se desactiva (`thinking: between_tools`), el límite sube a 4.000 y se reintenta una vez si llega vacío. Probado 4 de 4.
+- El texto del tab Avatares («Un archivo de Google Drive por avatar…») va en una sola línea en pantallas anchas.
+
+## 6-nov — Meta › Business Manager: sección revisada y ordenada
+- Orden nuevo de los bloques: Business Manager → Páginas y perfiles → Cuenta publicitaria e inversión → Píxel y cookies (antes el píxel quedaba entre medias con un título «0.0»). El ID de la cuenta publicitaria pasa de Business Manager a «Cuenta publicitaria» (junto a «¿Tenéis cuenta publicitaria activa?»); mismas claves, no se pierde ningún dato.
+- Texto del Business Manager reescrito: qué es, cómo darnos acceso (pasos + identificador de socio) y que el acceso se retira cuando quieran. Quitada la frase «Nunca os pediremos vuestra contraseña de Facebook ni de Instagram», que contradecía la tarjeta «Acceso a Facebook personal» de arriba. Pistas de los campos de ID más claras (dónde se encuentran, ~15 dígitos). El píxel y el banner de cookies siguen juntos (el banner hace falta para el píxel).
+
+## 6-nov — Competencia y Ofertas: una sola ficha, a todo lo ancho, y las nuevas en filas
+- En «Nuestros análisis», las pestañas **Competencia** y **Ofertas** (solo ellas; Avatares sigue en columnas) muestran una ficha a todo lo ancho, ya lista para rellenar si estaba vacía, y un botón «+ Añadir otro análisis» / «+ Añadir otra oferta» que apila las siguientes **en filas**, no en columnas. Campo `rows: true` en `competencia_fichas` y `oferta_fichas` (`fem: true` en ofertas para el género del texto).
+- Los cuadros de resumen y de conclusiones se abren directamente para escribir cuando están vacíos (antes pedían pulsar «Editar texto»).
+
+## 6-nov — Tareas: responsables del cliente
+- El desplegable de responsable de cada tarea y subtarea tiene ahora dos grupos: «Equipo de AVANIA» y «Del cliente». Las personas del cliente salen de «Quién forma la empresa» (Equipo) de su ficha y de los usuarios activos de su portal (sin duplicados por correo). Ejemplo: en Paula Fernández sale Paula Fernández Riveiro.
+- Al elegir a una persona del cliente se guarda su nombre y su correo en la tarea (`resp_correo`, en `proceso.fases`); al volver a elegir a alguien del equipo, el correo se quita. `cleanFases` valida el correo.
+- ClickUp: si el correo de esa persona coincide con alguien de ClickUp (p. ej. invitado), se le asigna; si no, la tarea lleva en la descripción «Responsable del cliente: nombre (correo)» y el resultado de sincronizar lo cuenta aparte («no están en ClickUp»), sin darlo por fallo.
+- Pendiente: usar ese correo para avisar por email al responsable del cliente cuando se le asigna o se acerca su fecha (de momento solo queda guardado).
+
+## 6-nov — Tareas: panel lateral de detalle (descripción, enlaces, «depende de» y comentarios)
+- Cada tarea y subtarea tiene un botón (icono de panel, con contador) que abre un **panel lateral** a la derecha (Esc o clic fuera lo cierra; el foco vuelve al botón). Dentro: nombre, estado, responsable y fechas; **Descripción** (hasta 4.000 caracteres, se guarda al salir del cuadro); **Enlaces** (título + dirección, hasta 12); **Depende de** (elige otras tareas del mismo cliente: si alguna no está «Hecha», la tarea sale «Bloqueada», con el icono en rojo en la fila; también muestra «Bloquea a…» y evita dependencias circulares); **Comentarios** (autor y fecha los pone el servidor, hasta 200).
+- Datos en `proceso.fases[]`: `id` (8 hex, se asigna al guardar; las tareas antiguas se migraron), `desc`, `links`, `dep`, `coment`. Los comentarios solo cambian con `POST /api/clients/:id/proceso/comentario`: guardar la lista de tareas no los pisa (`comentariosPorId`).
+- **Lo del panel es interno:** el cliente no ve descripción, enlaces, dependencias, comentarios, ids ni correos (`publicFases` en el portal y en el formulario por token).
+- ClickUp: la descripción de la tarea incluye la descripción de Space y sus enlaces.
+- Pendiente (siguiente paso acordado): vista «Mis tareas» de todos los clientes y avisos por correo (asignación y fechas) para poder prescindir de ClickUp.

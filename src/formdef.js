@@ -97,9 +97,9 @@ export const FORM = [
     key: 'oferta', num: '2', title: 'Nuestros análisis: avatar, competencia y oferta', owner: 'team', tabs: true,
     intro: 'Estos análisis los generamos nosotros a partir de lo que cuenta el cliente en «Sus clientes, competencia y ofertas». Tres pestañas (avatares, competencia y ofertas): en cada una, las conclusiones y una ficha por documento de Google Drive, con su resumen. Al pulsar «Ver» aparece una vista previa a la derecha. El cliente lo ve en solo lectura.',
     groups: [
-      { title: 'Avatares', tab: 'Avatares', intro: 'Un archivo de Google Drive por avatar (el cliente ideal). Pega el enlace, y escribe el resumen de lo que dice el análisis.', fields: [{ k: 'avatar_resumen', label: 'Conclusiones del avatar', hint: 'A quién nos dirigimos: quién es, qué le preocupa y qué le hace decidir', concl: 'avatar', type: 'textarea', owner: 'team' }, { k: 'avatares', label: 'Avatares', type: 'fichas', item: 'avatar', ai: 'avatar', max: 12, owner: 'team' }] },
-      { title: 'Competencia', tab: 'Competencia', intro: 'Un archivo de Google Drive por análisis de la competencia, con su resumen.', fields: [{ k: 'competencia_resumen', label: 'Conclusiones sobre la competencia', hint: 'Qué hace la competencia, dónde es fuerte y dónde nos podemos diferenciar', concl: 'competencia', type: 'textarea', owner: 'team' }, { k: 'competencia_fichas', label: 'Análisis de la competencia', type: 'fichas', item: 'análisis', ai: 'competencia', max: 12, owner: 'team' }] },
-      { title: 'Ofertas', tab: 'Ofertas', intro: 'Un archivo de Google Drive por oferta, con su resumen.', fields: [{ k: 'oferta_resumen', label: 'Conclusiones sobre la oferta', hint: 'La oferta que vamos a comunicar y por qué funciona', concl: 'oferta', type: 'textarea', owner: 'team' }, { k: 'oferta_fichas', label: 'Ofertas', type: 'fichas', item: 'oferta', ai: 'oferta', max: 12, owner: 'team' }] },
+      { title: 'Avatares', tab: 'Avatares', intro: 'Un archivo de Google Drive por avatar (el cliente ideal). Pega el enlace y escribe el resumen de lo que dice el análisis.', oneLine: true, fields: [{ k: 'avatar_resumen', label: 'Conclusiones del avatar', hint: 'A quién nos dirigimos: quién es, qué le preocupa y qué le hace decidir', concl: 'avatar', type: 'textarea', owner: 'team' }, { k: 'avatares', label: 'Avatares', type: 'fichas', item: 'avatar', ai: 'avatar', max: 12, owner: 'team' }] },
+      { title: 'Competencia', tab: 'Competencia', intro: 'Un archivo de Google Drive por análisis de la competencia, con su resumen.', fields: [{ k: 'competencia_resumen', label: 'Conclusiones sobre la competencia', hint: 'Qué hace la competencia, dónde es fuerte y dónde nos podemos diferenciar', concl: 'competencia', type: 'textarea', owner: 'team' }, { k: 'competencia_fichas', label: 'Análisis de la competencia', type: 'fichas', item: 'análisis', ai: 'competencia', max: 12, owner: 'team', rows: true }] },
+      { title: 'Ofertas', tab: 'Ofertas', intro: 'Un archivo de Google Drive por oferta, con su resumen.', fields: [{ k: 'oferta_resumen', label: 'Conclusiones sobre la oferta', hint: 'La oferta que vamos a comunicar y por qué funciona', concl: 'oferta', type: 'textarea', owner: 'team' }, { k: 'oferta_fichas', label: 'Ofertas', type: 'fichas', item: 'oferta', ai: 'oferta', max: 12, owner: 'team', rows: true, fem: true }] },
     ],
   },
   {
@@ -233,27 +233,27 @@ export const FORM = [
   {
     key: 'meta', num: '6', title: 'Meta: publicidad y redes (enlaces)',
     groups: [
-      { title: '6.1 Business Manager de Meta', intro: ['Es el acceso más importante: sin él no podemos crear ni gestionar vuestros anuncios.', 'Nunca os pediremos vuestra contraseña de Facebook ni de Instagram: el acceso se concede como socio desde vuestro Business Manager y podéis retirarlo cuando queráis.', 'Cómo: Configuración del negocio → Socios → Añadir → Dar acceso a un socio. Nuestro identificador es 7853166714786634.'], fields: [
+      { title: '6.1 Business Manager de Meta', intro: ['Es el acceso más importante: sin él no podemos crear ni gestionar vuestros anuncios. Si todavía no tenéis Business Manager, no pasa nada: lo creamos juntos.', 'Cómo darnos acceso: Configuración del negocio → Socios → Añadir → Dar acceso a un socio. Nuestro identificador de socio es 7853166714786634.', 'El acceso se concede como socio y podéis retirarlo cuando queráis.'], fields: [
         { k: 'bm_creado', label: '¿Tenéis Business Manager creado?', type: 'tri' },
-        { k: 'bm_id', label: 'ID de vuestro Business Manager', hint: 'Si ya lo tenéis', type: 'text' },
-        { k: 'bm_acceso', label: '¿Habéis concedido ya el acceso?', type: 'select', options: ['Sí', 'No'] },
-        { k: 'ads_id', label: 'ID de la cuenta publicitaria', hint: 'Administrador de anuncios › Ajustes de la cuenta. Es un número de unos 15 dígitos', type: 'text' },
+        { k: 'bm_id', label: 'ID de vuestro Business Manager', hint: 'Configuración del negocio › Información del negocio. Es un número de unos 15 dígitos', type: 'text' },
+        { k: 'bm_acceso', label: '¿Habéis concedido ya el acceso?', hint: 'Como socio, con nuestro identificador', type: 'select', options: ['Sí', 'No'] },
       ] },
-      { title: '6.2 Cuenta publicitaria e inversión', intro: 'La inversión en publicidad la pagáis vosotros directamente a Meta. AVANIA la gestiona, pero nunca cobra ni adelanta ese dinero.', fields: [
-        { k: 'cuenta_pub', label: '¿Tenéis cuenta publicitaria activa?', type: 'tri' },
-        { k: 'metodo_pago', label: 'Método de pago dado de alta en Meta', hint: 'Tarjeta, domiciliación...', type: 'text' },
-        { k: 'presupuesto', label: 'Presupuesto mensual previsto para anuncios', hint: 'Una idea inicial; lo hablaremos juntos', type: 'text' },
-        { k: 'campanas_previas', label: '¿Habéis hecho campañas antes?', type: 'tri' },
-      ] },
-      { title: '0.0 Píxel de seguimiento', intro: 'Sin este código instalado no podemos lanzar la campaña. Es lo primero que revisamos.', fields: [
-        { k: 'pixel', label: '¿Tenéis ya píxel de Meta instalado?', type: 'tri' },
-        { k: 'cookies', label: '¿Tenéis banner de cookies?', type: 'tri' },
-      ] },
-      { title: '6.3 Páginas y perfiles', fields: [
+      { title: '6.2 Páginas y perfiles', intro: 'Las páginas y cuentas que vamos a conectar a los anuncios.', fields: [
         { k: 'pagina_fb', label: 'Página de Facebook', hint: 'Enlace', type: 'url' },
         { k: 'perfil_ig', label: 'Perfil de Instagram', hint: 'Usuario', type: 'text' },
         { k: 'ig_profesional', label: '¿La cuenta de Instagram es profesional?', type: 'tri' },
         { k: 'ig_vinculado', label: '¿Instagram está vinculado a la página de Facebook?', type: 'tri' },
+      ] },
+      { title: '6.3 Cuenta publicitaria e inversión', intro: 'La inversión en publicidad la pagáis vosotros directamente a Meta. AVANIA la gestiona, pero nunca cobra ni adelanta ese dinero.', fields: [
+        { k: 'cuenta_pub', label: '¿Tenéis cuenta publicitaria activa?', type: 'tri' },
+        { k: 'ads_id', label: 'ID de la cuenta publicitaria', hint: 'Administrador de anuncios › Ajustes de la cuenta. Es un número de unos 15 dígitos', type: 'text' },
+        { k: 'metodo_pago', label: 'Método de pago dado de alta en Meta', hint: 'Tarjeta, domiciliación...', type: 'text' },
+        { k: 'presupuesto', label: 'Presupuesto mensual previsto para anuncios', hint: 'Una idea inicial; lo hablaremos juntos', type: 'text' },
+        { k: 'campanas_previas', label: '¿Habéis hecho campañas antes?', type: 'tri' },
+      ] },
+      { title: '6.4 Píxel de seguimiento y cookies', intro: 'Sin este código instalado no podemos lanzar la campaña. Es lo primero que revisamos.', fields: [
+        { k: 'pixel', label: '¿Tenéis ya píxel de Meta instalado?', type: 'tri' },
+        { k: 'cookies', label: '¿Tenéis banner de cookies?', hint: 'Hace falta para que el píxel cumpla la normativa', type: 'tri' },
       ] },
     ],
   },

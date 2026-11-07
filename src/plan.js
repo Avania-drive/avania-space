@@ -1,5 +1,6 @@
 // Tareas priorizadas (de AVANIA y del cliente) y cronograma del proyecto, calculados a partir de lo que hay en la ficha.
 // Lo usan el panel de la agencia, el espacio del cliente y el informe por correo.
+import { randomBytes } from 'node:crypto';
 import { FORM, BLOCKS, gates, isFilled, shown } from './formdef.js';
 
 const ORDER = { alta: 0, media: 1, baja: 2 };
@@ -73,17 +74,42 @@ export const FASES_BASE = [
 export const fasesBase = () => FASES_BASE.map(([fase, quien]) => ({ fase, quien, estado: 'Pendiente', responsable: '', inicio: '', fecha: '', nota: '', sub: [] }));
 /** Las fases del cliente: las que haya guardado la agencia o, si aún no hay ninguna, la lista estándar. */
 export const fasesOf = (sections) => (Array.isArray((sections.proceso || {}).fases) && sections.proceso.fases.length ? sections.proceso.fases : fasesBase());
-// Tarea (antes «fase») y sus subtareas: quién la hace (AVANIA / Cliente / Ambos), la persona del equipo responsable, inicio y fin (`fecha`).
-export function cleanFases(list) {
+// Tarea (antes «fase») y sus subtareas: quién la hace (AVANIA / Cliente / Ambos), la persona responsable, inicio y fin (`fecha`).
+// Cada una lleva un `id` propio (para las dependencias) y, solo para la agencia: descripción (`desc`), enlaces (`links`), «depende de» (`dep`, ids) y comentarios (`coment`).
+const ID_RE = /^[a-f0-9]{8}$/;
+const COMENT_MAX = 200;
+const cleanComent = (list) => (Array.isArray(list) ? list : []).slice(-COMENT_MAX).map((c) => ({
+  autor: String(c?.autor ?? '').trim().slice(0, 80), fecha: /^\d{4}-\d{2}-\d{2}T/.test(String(c?.fecha || '')) ? String(c.fecha).slice(0, 30) : '', texto: String(c?.texto ?? '').trim().slice(0, 1500) })).filter((c) => c.texto);
+/** `opts.comments` = Map(id → comentarios ya guardados): los comentarios no se cambian al guardar la lista, solo con su propia ruta (así nadie pisa los de otro). */
+export function cleanFases(list, opts = {}) {
   const t = (v, n) => String(v ?? '').trim().slice(0, n);
+  const seen = new Set();
   const one = (r) => {
     const inicio = isoDate(r.inicio) || '', fecha = isoDate(r.fecha) || '';
-    return { fase: t(r.fase, 160), quien: FASES_QUIEN.includes(r.quien) ? r.quien : 'AVANIA', estado: FASES_ESTADO.includes(r.estado) ? r.estado : 'Pendiente',
-      responsable: t(r.responsable, 80), inicio, fecha, nota: t(r.nota, 300), ...(t(r.cu, 40) ? { cu: t(r.cu, 40) } : {}) };   // cu = id de la tarea en ClickUp
+    let id = ID_RE.test(String(r.id || '')) && !seen.has(r.id) ? r.id : randomBytes(4).toString('hex');
+    seen.add(id);
+    const links = (Array.isArray(r.links) ? r.links : []).slice(0, 12).map((l) => ({ titulo: t(l?.titulo, 80), url: /^https?:\/\//i.test(t(l?.url, 600)) ? t(l.url, 600) : '' })).filter((l) => l.url);
+    const dep = [...new Set((Array.isArray(r.dep) ? r.dep : []).map((x) => String(x)).filter((x) => ID_RE.test(x) && x !== id))].slice(0, 12);
+    const coment = opts.comments ? (opts.comments.get(id) || []) : cleanComent(r.coment);
+    return { id, fase: t(r.fase, 160), quien: FASES_QUIEN.includes(r.quien) ? r.quien : 'AVANIA', estado: FASES_ESTADO.includes(r.estado) ? r.estado : 'Pendiente',
+      responsable: t(r.responsable, 80), ...(t(r.responsable, 80) && /^\S+@\S+\.\S+$/.test(t(r.resp_correo, 120)) ? { resp_correo: t(r.resp_correo, 120).toLowerCase() } : {}), inicio, fecha,   // resp_correo = la persona es del cliente (no del equipo) y este es su correo
+      nota: t(r.nota, 300), ...(t(r.desc, 4000) ? { desc: t(r.desc, 4000) } : {}), ...(links.length ? { links } : {}), ...(dep.length ? { dep } : {}), ...(coment.length ? { coment } : {}),
+      ...(t(r.cu, 40) ? { cu: t(r.cu, 40) } : {}) };   // cu = id de la tarea en ClickUp
   };
-  return (Array.isArray(list) ? list : []).slice(0, 60).filter((r) => t(r?.fase, 160)).map((r) => ({
+  const out = (Array.isArray(list) ? list : []).slice(0, 60).filter((r) => t(r?.fase, 160)).map((r) => ({
     ...one(r), sub: (Array.isArray(r.sub) ? r.sub : []).slice(0, 40).filter((x) => t(x?.fase, 160)).map(one) }));
+  // Una dependencia que apunta a una tarea que ya no existe se quita.
+  const all = new Set(out.flatMap((f) => [f.id, ...f.sub.map((x) => x.id)]));
+  for (const f of out) for (const x of [f, ...f.sub]) if (x.dep) { x.dep = x.dep.filter((d) => all.has(d)); if (!x.dep.length) delete x.dep; }
+  return out;
 }
+/** Comentarios guardados de cada tarea, por id (para no perderlos al guardar la lista). */
+export const comentariosPorId = (fases) => new Map((Array.isArray(fases) ? fases : []).flatMap((f) => [f, ...(f.sub || [])]).filter((x) => x.id && Array.isArray(x.coment) && x.coment.length).map((x) => [x.id, x.coment]));
+/** Lo que ve el cliente de las tareas: sin descripción, enlaces, dependencias, comentarios ni datos internos. */
+export const publicFases = (fases) => (Array.isArray(fases) ? fases : []).map((f) => {
+  const pub = ({ desc, links, dep, coment, resp_correo, cu, id, ...r }) => r;   // eslint-disable-line no-unused-vars
+  return { ...pub(f), sub: (f.sub || []).map(pub) };
+});
 /** Tareas y subtareas en una sola lista (las subtareas llevan el nombre de su tarea delante). */
 export const fasesFlat = (sections) => fasesOf(sections).flatMap((f) => [f, ...(f.sub || []).map((x) => ({ ...x, fase: `${f.fase} › ${x.fase}`, esSub: true }))]);
 

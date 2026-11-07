@@ -498,7 +498,7 @@ function previewPane() {
 // ───────── Ficha del cliente ─────────
 async function clientView(id, tab) {
   if (tab === 'horarios') tab = 'agenda';   // los horarios y las fechas señaladas viven solo en Empresa › Horarios
-  const { client, views = {}, statuses, sections, meta, progress, gates, allowed, dental, tasks, timeline, fases, team = [], onboarding } = await api('GET', `/api/clients/${id}`);
+  const { client, views = {}, statuses, sections, meta, progress, gates, allowed, dental, tasks, timeline, fases, team = [], clientPeople = [], onboarding } = await api('GET', `/api/clients/${id}`);
   const fd = scopeForm(formDef, allowed, dental);
   // Vista de cliente: solo administradores. Enseña cada página como la ve el cliente, en solo lectura.
   const canPreview = me.role === 'super_admin' || me.role === 'admin';
@@ -567,7 +567,7 @@ async function clientView(id, tab) {
     await clientUsersTab(main, id);
   } else if (t.key === 'plan') {
     main.append(el('p', { class: 'muted' }, 'Todo lo que hacemos por el cliente, desde los documentos de investigación hasta el lanzamiento. Cada tarea tiene su responsable del equipo, fecha de inicio y de fin, y puede llevar subtareas. El cliente lo ve y sigue cada paso. Los cambios se guardan al momento.'),
-      el('section', { class: 'card', style: 'margin:12px 0' }, phasesNode(fases, { team, edit: { save: (b) => api('PUT', `/api/clients/${id}/proceso`, b), error: (e) => toast(e.message) } })),
+      el('section', { class: 'card', style: 'margin:12px 0' }, phasesNode(fases, { team, clientPeople, edit: { save: (b) => api('PUT', `/api/clients/${id}/proceso`, b), comment: (tid, texto) => api('POST', `/api/clients/${id}/proceso/comentario`, { id: tid, texto }), error: (e) => toast(e.message) } })),
       ['super_admin', 'admin'].includes(me.role) ? clickupBar() : '',
       el('section', { class: 'cgroup' }, el('h2', {}, 'Próximas acciones'), taskColumns(tasks, { mine: 'Del cliente', ours: 'Nuestras', limit: 5, href: (tk) => (tk.section === 'proceso' ? `#/c/${id}/plan` : `#/c/${id}/${tk.section}`) })),
       el('section', { class: 'cgroup' }, el('h2', {}, 'Fechas clave'), el('div', { class: 'card' }, liveTimeline(80))));
@@ -727,7 +727,7 @@ async function clientView(id, tab) {
       btn.disabled = true; if (change) change.disabled = true; msg.className = 'muted'; msg.textContent = 'Sincronizando con ClickUp…';
       try {
         const r = await api('POST', `/api/clients/${id}/clickup/sync`, pick || {});
-        clickupNote = { id, text: `${r.spaceCreated ? 'Espacio creado. ' : ''}${r.created} nuevas, ${r.updated} actualizadas${r.pulled ? `, ${r.pulled} cerradas en ClickUp` : ''}${r.notified.length ? ` · avisados: ${r.notified.join(', ')}` : ''}${r.unassigned.length ? ` · sin persona en ClickUp: ${r.unassigned.join(', ')}` : ''}${(r.adjusted || []).length ? ` · inicio posterior al fin, ajustado al día del fin: ${r.adjusted.join(', ')}` : ''}. `, link: r.link };
+        clickupNote = { id, text: `${r.spaceCreated ? 'Espacio creado. ' : ''}${r.created} nuevas, ${r.updated} actualizadas${r.pulled ? `, ${r.pulled} cerradas en ClickUp` : ''}${r.notified.length ? ` · avisados: ${r.notified.join(', ')}` : ''}${r.unassigned.length ? ` · sin persona en ClickUp: ${r.unassigned.join(', ')}` : ''}${(r.external || []).length ? ` · responsables del cliente (anotados en la tarea, no están en ClickUp): ${r.external.join(', ')}` : ''}${(r.adjusted || []).length ? ` · inicio posterior al fin, ajustado al día del fin: ${r.adjusted.join(', ')}` : ''}. `, link: r.link };
         route();   // las tareas vuelven con su id de ClickUp: hay que repintarlas para que los cambios siguientes no dupliquen
       } catch (e) {
         if (e.code === 'needs_target') { msg.textContent = ''; btn.disabled = false; if (change) change.disabled = false; return choose(); }

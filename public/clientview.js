@@ -27,37 +27,177 @@ export function taskList(tasks, { href, empty = 'Nada pendiente.', limit = 8 } =
 }
 
 // Papelera pequeña (SVG en línea) para eliminar.
+const detIcon = () => { const i = el('span', { class: 'deticon', 'aria-hidden': 'true' }); i.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16M17 9h1M17 13h1"/></svg>'; return i; };
 const trash = () => { const i = el('span', { class: 'trash', 'aria-hidden': 'true' }); i.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v6M14 10v6"/></svg>'; return i; };
 
 /** Las tareas del proyecto (antes «fases»): cada una con su responsable del equipo, inicio, fin y subtareas. Con `edit.save(cambios)` la agencia las cambia; `team` = personas a las que asignarlas. */
-export function phasesNode(fases, { edit = null, viewer = 'agencia', team = [] } = {}) {
+/**
+ * Reordenar una lista arrastrando la barra del lado izquierdo de cada elemento (ratón o dedo), o con las flechas ↑ ↓ del teclado cuando la barra tiene el foco.
+ * `list` = el <ul>/<ol> cuyos hijos directos llevan un `.draghandle`; `onMove(desde, hasta)` recibe las posiciones.
+ */
+function sortable(list, onMove, refocus) {
+  list.addEventListener('keydown', (e) => {
+    const h = e.target.closest?.('.draghandle'); if (!h || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    const items = [...list.children], from = items.indexOf(h.closest('li')), to = from + (e.key === 'ArrowUp' ? -1 : 1);
+    e.preventDefault(); if (to < 0 || to >= items.length) return;
+    refocus(to); onMove(from, to);
+  });
+  list.addEventListener('pointerdown', (e) => {
+    const h = e.target.closest?.('.draghandle'); if (!h || e.button) return;
+    const item = h.closest('li'); if (!item || item.parentElement !== list) return;
+    e.preventDefault();
+    const items = [...list.children], from = items.indexOf(item), others = items.filter((x) => x !== item), y0 = e.clientY;
+    let to = from;
+    item.classList.add('dragging'); list.classList.add('sorting');
+    try { h.setPointerCapture(e.pointerId); } catch { /* sin captura */ }
+    const move = (ev) => {
+      item.style.transform = `translateY(${ev.clientY - y0}px)`;
+      to = others.filter((x) => { const r = x.getBoundingClientRect(); return ev.clientY > r.top + r.height / 2; }).length;
+      others.forEach((x, i) => { x.classList.toggle('drop-above', i === to); x.classList.toggle('drop-below', to === others.length && i === others.length - 1); });
+    };
+    const end = (ev) => {
+      h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', end); h.removeEventListener('pointercancel', end);
+      item.classList.remove('dragging'); item.style.transform = ''; list.classList.remove('sorting');
+      others.forEach((x) => x.classList.remove('drop-above', 'drop-below'));
+      if (ev.type === 'pointerup' && to !== from) onMove(from, to);
+    };
+    h.addEventListener('pointermove', move); h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
+  });
+}
+
+export function phasesNode(fases, { edit = null, viewer = 'agencia', team = [], clientPeople = [] } = {}) {
   const box = el('div', { class: 'phases' });
   let rows = fases.map((f) => ({ ...f, sub: (f.sub || []).map((x) => ({ ...x })) }));
   const open = new Set();   // posiciones de las tareas con las subtareas desplegadas
   const label = (e) => (viewer === 'cliente' && e === 'Esperando cliente' ? 'Os toca a vosotros' : e);
   const persist = async (body) => { try { const r = await edit.save(body); rows = r.fases.map((f) => ({ ...f, sub: (f.sub || []).map((x) => ({ ...x })) })); draw(); } catch (e) { edit.error(e); } };
   const save = () => persist({ fases: rows });
-  const move = (i, d) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j], rows[i]]; save(); };
+  const reorder = (arr, from, to) => { arr.splice(to, 0, arr.splice(from, 1)[0]); save(); };
+  let focusAt = null;   // tras mover con el teclado, el foco vuelve a la barra de la tarea movida
+  // ───── Panel de detalle (solo agencia): descripción, enlaces, «depende de» y comentarios ─────
+  const flat = () => rows.flatMap((f, i) => [{ t: f, label: f.fase, path: [i] }, ...(f.sub || []).map((x, j) => ({ t: x, label: `${f.fase} › ${x.fase}`, path: [i, j] }))]);
+  const byId = (id) => flat().find((x) => x.t.id === id)?.t;
+  const waiting = (t) => (t.dep || []).map(byId).filter((x) => x && x.estado !== 'Hecho');
+  const dependsOn = (t, targetId, seen = new Set()) => (t.dep || []).some((d) => d === targetId || (!seen.has(d) && seen.add(d) && byId(d) && dependsOn(byId(d), targetId, seen)));
+  let panelId = null, panelOpener = null;
+  const panel = { root: null };
+  const closePanel = () => { panelId = null; if (panel.root) panel.root.remove(); panel.root = null; document.removeEventListener('keydown', onEsc); panelOpener?.focus?.(); panelOpener = null; };
+  const onEsc = (e) => { if (e.key === 'Escape') closePanel(); };
+  const openPanel = async (t, opener) => {
+    if (flat().some((x) => !x.t.id)) {   // las tareas antiguas aún no tienen id: se guardan una vez para dárselo
+      const path = flat().find((x) => x.t === t)?.path; await persistWait({ fases: rows });
+      const again = path && (path.length === 1 ? rows[path[0]] : rows[path[0]]?.sub?.[path[1]]); if (!again) return; t = again;
+    }
+    panelId = t.id; panelOpener = opener || null;
+    if (panel.root) panel.root.remove();
+    buildPanel(); draw();
+    document.addEventListener('keydown', onEsc);
+    panel.root.querySelector('.tp-close')?.focus();
+  };
+  const persistWait = async (body) => { const r = await edit.save(body); rows = r.fases.map((f) => ({ ...f, sub: (f.sub || []).map((x) => ({ ...x })) })); };
+  const buildPanel = () => {
+    const cur = () => byId(panelId);
+    const headBox = el('div', { class: 'tp-head' }), depBox = el('div'), comBox = el('div');
+    const descTa = el('textarea', { rows: 5, class: 'tp-desc', placeholder: 'Qué hay que hacer, cómo, criterios de «hecho», notas…', 'aria-label': 'Descripción' });
+    const linksBox = el('div', { class: 'tp-links' });
+    const saveField = (fn) => { const t = cur(); if (!t) return; fn(t); save(); };
+    descTa.value = (cur() || {}).desc || '';
+    descTa.addEventListener('change', () => saveField((t) => { if (descTa.value.trim()) t.desc = descTa.value; else delete t.desc; }));
+    const drawLinks = () => {
+      const t = cur(); const ls = (t && t.links) || [];
+      linksBox.replaceChildren(...ls.map((l, i) => el('div', { class: 'tp-link' },
+        el('input', { value: l.titulo || '', placeholder: 'Título (p. ej. Guion en Drive)', 'aria-label': 'Título del enlace', onchange: (e) => saveField((x) => { x.links[i].titulo = e.target.value; }) }),
+        el('input', { type: 'url', value: l.url || '', placeholder: 'https://…', 'aria-label': 'Dirección del enlace', onchange: (e) => saveField((x) => { x.links[i].url = e.target.value; }) }),
+        l.url ? el('a', { class: 'btn ghost small', href: l.url, target: '_blank', rel: 'noopener', 'aria-label': 'Abrir enlace' }, '↗') : '',
+        el('button', { type: 'button', class: 'phdel', 'aria-label': 'Quitar enlace', onclick: () => { saveField((x) => { x.links.splice(i, 1); if (!x.links.length) delete x.links; }); drawLinks(); } }, trash()))),
+      el('button', { type: 'button', class: 'btn ghost small', onclick: () => { const t2 = cur(); if (!t2) return; (t2.links ||= []).push({ titulo: '', url: 'https://' }); drawLinks(); linksBox.querySelectorAll('.tp-link')[t2.links.length - 1]?.querySelector('input')?.focus(); } }, '+ Añadir enlace'));
+    };
+    const drawDeps = () => {
+      const t = cur(); if (!t) return;
+      const mine = (t.dep || []).map(byId).filter(Boolean), blockedBy = waiting(t);
+      const opts = flat().filter((x) => x.t.id !== t.id && !(t.dep || []).includes(x.t.id) && !dependsOn(x.t, t.id));
+      const blocks = flat().filter((x) => (x.t.dep || []).includes(t.id));
+      const add = el('select', { 'aria-label': 'Añadir dependencia', onchange: (e) => { if (!e.target.value) return; const id = e.target.value; saveField((x) => { x.dep = [...(x.dep || []), id]; }); } },
+        el('option', { value: '' }, 'Esta tarea depende de…'), opts.map((x) => el('option', { value: x.t.id }, x.label)));
+      depBox.replaceChildren(
+        blockedBy.length ? el('p', { class: 'tp-block' }, `Bloqueada: espera a ${blockedBy.map((x) => `«${x.fase}»`).join(', ')}`) : (mine.length ? el('p', { class: 'tp-ok' }, 'Sin bloqueos: todo lo que necesita está hecho.') : ''),
+        mine.length ? el('ul', { class: 'tp-deps' }, mine.map((x) => el('li', {}, el('span', { class: `tp-dot ${x.estado === 'Hecho' ? 'ok' : ''}` }), el('span', { class: 'grow' }, x.fase), el('small', {}, x.estado),
+          el('button', { type: 'button', class: 'phdel', 'aria-label': `Quitar dependencia: ${x.fase}`, onclick: () => saveField((y) => { y.dep = y.dep.filter((d) => d !== x.id); if (!y.dep.length) delete y.dep; }) }, trash())))) : '',
+        opts.length ? add : el('p', { class: 'muted', style: 'margin:0' }, mine.length ? '' : 'No hay otras tareas de las que pueda depender.'),
+        blocks.length ? el('p', { class: 'muted', style: 'margin:8px 0 0;font-size:13px' }, `Bloquea a: ${blocks.map((x) => x.label).join(', ')}`) : '');
+    };
+    const drawComments = () => {
+      const t = cur(); if (!t) return;
+      const ta = el('textarea', { rows: 3, placeholder: 'Escribe un comentario…', 'aria-label': 'Nuevo comentario' });
+      const send = el('button', { type: 'button', class: 'btn small', onclick: async () => {
+        if (!ta.value.trim()) return ta.focus();
+        send.disabled = true;
+        try { const r = await edit.comment(t.id, ta.value); rows = r.fases.map((f) => ({ ...f, sub: (f.sub || []).map((x) => ({ ...x })) })); draw(); drawComments(); }
+        catch (e) { edit.error(e); send.disabled = false; }
+      } }, 'Comentar');
+      comBox.replaceChildren(...(t.coment || []).slice().reverse().map((c) => el('article', { class: 'tp-com' }, el('div', { class: 'tp-comh' }, el('strong', {}, c.autor || 'Alguien'), c.fecha ? el('time', { class: 'muted' }, fmtDate(c.fecha, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) : ''), el('p', {}, c.texto))),
+        ...((t.coment || []).length ? [] : [el('p', { class: 'muted', style: 'margin:0 0 8px' }, 'Todavía no hay comentarios.')]));
+      comBox.prepend(ta, el('div', { class: 'row end', style: 'margin:6px 0 12px' }, send));
+    };
+    const drawHead = () => {
+      const t = cur(); if (!t) return closePanel();
+      headBox.replaceChildren(
+        el('div', { class: 'row', style: 'gap:8px;align-items:flex-start' }, el('input', { class: 'tp-title', value: t.fase, 'aria-label': 'Nombre de la tarea', onchange: (e) => { if (e.target.value.trim()) saveField((x) => { x.fase = e.target.value; }); } }),
+          el('button', { type: 'button', class: 'btn ghost small tp-close', 'aria-label': 'Cerrar', onclick: closePanel }, '✕')),
+        el('div', { class: 'tp-meta' }, estadoSel(t), respSel(t), el('label', { class: 'phd' }, el('small', {}, 'Inicio'), dateIn(t, 'inicio', 'Fecha de inicio')), el('label', { class: 'phd' }, el('small', {}, 'Fin'), dateIn(t, 'fecha', 'Fecha de finalización'))));
+    };
+    panel.sync = () => { drawHead(); drawDeps(); };
+    drawHead(); drawLinks(); drawDeps(); drawComments();
+    const sec = (title, ...kids) => el('section', { class: 'tp-sec' }, el('h3', {}, title), ...kids);
+    const root = el('div', { class: 'tp-wrap' }, el('div', { class: 'tp-scrim', onclick: closePanel }),
+      el('aside', { class: 'taskpanel', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Detalle de la tarea' }, headBox,
+        sec('Descripción', descTa), sec('Enlaces', linksBox), sec('Depende de', depBox), sec('Comentarios', comBox)));
+    panel.root = root;
+  };
+  const estadoSel = (f) => { const x = sel(['Pendiente', 'En curso', 'Esperando cliente', 'Hecho'].map((o) => [o, o]), f.estado, 'Estado', (v) => { f.estado = v; save(); }); x.className = `stsel st-${{ Hecho: 'hecho', 'En curso': 'curso', 'Esperando cliente': 'espera' }[f.estado] || 'pend'}`; return x; };
+  const grip = (f) => el('button', { type: 'button', class: 'draghandle', title: 'Arrastra para mover', 'aria-label': `Mover: ${f.fase}. Arrastra, o usa las flechas arriba y abajo` });
   const span = (f) => (f.inicio && f.fecha ? `${dateText(f.inicio)} → ${dateText(f.fecha)}` : f.fecha ? `Hasta el ${dateText(f.fecha)}` : f.inicio ? `Desde el ${dateText(f.inicio)}` : '');
   const sel = (opts, cur, label, on) => el('select', { 'aria-label': label, onchange: (e) => on(e.target.value) }, opts.map(([v, t]) => el('option', { value: v, selected: cur === v }, t)));
-  const people = (cur) => { const l = [...new Set([...team, cur].filter(Boolean))]; return [['', 'Sin asignar'], ...l.map((n) => [n, n])]; };
+  // Responsables: el equipo de AVANIA y, aparte, las personas del cliente (con su correo, para avisarles). El valor de las del cliente lleva «cli:» delante.
+  const people = (f) => {
+    const mine = f.resp_correo ? clientPeople.find((p) => p.correo === f.resp_correo || p.nombre === f.responsable) : null;
+    const cur = f.responsable && !f.resp_correo ? f.responsable : '';
+    const l = [...new Set([...team, cur].filter(Boolean))];
+    const cli = clientPeople.map((p) => [`cli:${p.nombre}`, p.nombre]);
+    if (f.resp_correo && !mine && f.responsable) cli.push([`cli:${f.responsable}`, f.responsable]);
+    return { cur: f.resp_correo ? `cli:${f.responsable}` : (f.responsable || ''), list: [['', 'Sin asignar'], ...l.map((n) => [n, n])], cli };
+  };
+  const setResp = (f, v) => {
+    if (v.startsWith('cli:')) { const nombre = v.slice(4), p = clientPeople.find((x) => x.nombre === nombre); f.responsable = nombre; if (p && p.correo) f.resp_correo = p.correo; else delete f.resp_correo; }
+    else { f.responsable = v; delete f.resp_correo; }
+    save();
+  };
+  const respSel = (f) => {
+    const o = people(f);
+    const s = el('select', { 'aria-label': 'Responsable', title: f.resp_correo ? `${f.responsable} · ${f.resp_correo}` : '', onchange: (e) => setResp(f, e.target.value) },
+      el('optgroup', { label: 'Equipo de AVANIA' }, o.list.map(([v, t]) => el('option', { value: v, selected: o.cur === v }, t))),
+      o.cli.length ? el('optgroup', { label: 'Del cliente' }, o.cli.map(([v, t]) => el('option', { value: v, selected: o.cur === v }, t))) : '');
+    return s;
+  };
   const dateIn = (f, k, label) => el('input', { type: 'date', ...DATE_ATTRS, value: f[k] || '', 'aria-label': label, onchange: (e) => { if (!e.target.value || okDate(e.target.value)) { f[k] = e.target.value; save(); } } });
   // Una tarea o subtarea editable: nombre, responsable, estado, inicio y fin.
   const editRow = (f, { remove, extra }) => [
     el('input', { class: 'phname', value: f.fase, 'aria-label': 'Nombre', onchange: (e) => { f.fase = e.target.value; save(); } }),
     el('div', { class: 'phctl' },
-      sel(people(f.responsable), f.responsable || '', 'Responsable', (v) => { f.responsable = v; save(); }),
-      (() => { const x = sel(['Pendiente', 'En curso', 'Esperando cliente', 'Hecho'].map((o) => [o, o]), f.estado, 'Estado', (v) => { f.estado = v; save(); }); x.className = `stsel st-${{ Hecho: 'hecho', 'En curso': 'curso', 'Esperando cliente': 'espera' }[f.estado] || 'pend'}`; return x; })(),
+      respSel(f),
+      estadoSel(f),
       el('label', { class: 'phd' }, el('small', {}, 'Inicio'), dateIn(f, 'inicio', 'Fecha de inicio')),
       el('label', { class: 'phd' }, el('small', {}, 'Fin'), dateIn(f, 'fecha', 'Fecha de finalización'))),
-    el('span', { class: 'phtools' }, ...(extra || []), el('button', { type: 'button', class: 'phdel', title: 'Eliminar', 'aria-label': `Eliminar: ${f.fase}`, onclick: async () => {
+    el('span', { class: 'phtools' }, ...(extra || []), el('button', { type: 'button', class: `btn ghost small detbtn${waiting(f).length ? ' blocked' : ''}`, title: waiting(f).length ? `Bloqueada: espera a ${waiting(f).map((x) => x.fase).join(', ')}` : 'Abrir el detalle de la tarea', 'aria-label': `Detalle: ${f.fase}`, onclick: (e) => openPanel(f, e.currentTarget) },
+      detIcon(), (f.links || []).length + (f.coment || []).length + (f.desc ? 1 : 0) ? el('span', { class: 'cnt' }, String((f.links || []).length + (f.coment || []).length + (f.desc ? 1 : 0))) : ''),
+      el('button', { type: 'button', class: 'phdel', title: 'Eliminar', 'aria-label': `Eliminar: ${f.fase}`, onclick: async () => {
       if (await askConfirm({ title: 'Eliminar', text: `¿Eliminar «${f.fase}»${(f.sub || []).length ? ` y sus ${f.sub.length} subtareas` : ''}? No se puede deshacer.`, ok: 'Eliminar', danger: true })) remove();
     } }, trash()))];
   const addSub = (f, i) => {
     const name = el('input', { placeholder: 'Nueva subtarea…', 'aria-label': 'Nueva subtarea', style: 'flex:1;min-width:160px' });
     return el('form', { class: 'row phsubadd', onsubmit: (e) => { e.preventDefault(); if (!name.value.trim()) return; (f.sub ||= []).push({ fase: name.value.trim(), quien: f.quien, estado: 'Pendiente', responsable: f.responsable || '', inicio: '', fecha: '', nota: '' }); open.add(i); save(); } }, name, el('button', { class: 'btn small' }, '+ Subtarea'));
   };
-  const draw = () => {
+  let draw = () => {
     const done = rows.filter((f) => f.estado === 'Hecho').length, pct = rows.length ? Math.round((done / rows.length) * 100) : 0;
     const now = rows.findIndex((f) => f.estado !== 'Hecho');
     const cls = (f) => (f.estado === 'Hecho' ? 'hecho' : f.estado === 'En curso' ? 'curso' : f.estado === 'Esperando cliente' ? 'espera' : 'pend');
@@ -68,24 +208,24 @@ export function phasesNode(fases, { edit = null, viewer = 'agencia', team = [] }
       const head = el('div', { class: `ph st-${cls(f)}${i === now ? ' now' : ''}` },
         el('span', { class: 'phn', 'aria-hidden': 'true' }, f.estado === 'Hecho' ? '✓' : String(i + 1)),
         ...(edit ? editRow(f, { remove: () => { rows.splice(i, 1); save(); }, extra: [
-          el('button', { type: 'button', class: `btn ghost small${subs.length ? ' has' : ''}`, title: subs.length ? `Subtareas: ${sdone} de ${subs.length} hechas` : 'Añadir subtareas', 'aria-label': 'Subtareas', 'aria-expanded': String(open.has(i)), onclick: () => { open.has(i) ? open.delete(i) : open.add(i); draw(); } }, subs.length ? `↳ ${sdone}/${subs.length}` : '↳ +'),
-          el('button', { type: 'button', class: 'btn ghost small', title: 'Subir', 'aria-label': 'Subir', onclick: () => move(i, -1) }, '↑'),
-          el('button', { type: 'button', class: 'btn ghost small', title: 'Bajar', 'aria-label': 'Bajar', onclick: () => move(i, 1) }, '↓')] })
+          el('button', { type: 'button', class: `btn ghost small${subs.length ? ' has' : ''}`, title: subs.length ? `Subtareas: ${sdone} de ${subs.length} hechas` : 'Añadir subtareas', 'aria-label': 'Subtareas', 'aria-expanded': String(open.has(i)), onclick: () => { open.has(i) ? open.delete(i) : open.add(i); draw(); } }, subs.length ? `↳ ${sdone}/${subs.length}` : '↳ +')] })
           : [el('span', { class: 'phname' }, f.fase, f.nota ? el('small', {}, f.nota) : '', subs.length ? el('small', {}, `${sdone} de ${subs.length} subtareas hechas`) : ''),
             f.responsable ? el('span', { class: 'phwho' }, f.responsable) : el('span', { class: 'twho', 'data-who': { AVANIA: 'avania', Cliente: 'cliente', Ambos: 'ambos' }[f.quien] }, viewer === 'cliente' && f.quien === 'Cliente' ? 'Vosotros' : f.quien),
             el('span', { class: 'phdate' }, span(f)), el('span', { class: 'phst' }, label(f.estado))]));
-      return el('li', { class: 'phitem' }, head, shown ? el('div', { class: 'phsubs' },
-        edit ? el('ul', { class: 'phsub-list' }, subs.map((x, j) => el('li', { class: `ph phsub-edit st-${cls(x)}` }, el('span', { class: 'phsn', 'aria-hidden': 'true' }, '·'),
-          ...editRow(x, { remove: () => { subs.splice(j, 1); save(); } })))) : el('ul', { class: 'phsub-list' }, subs.map(subView)),
+      return el('li', { class: `phitem${edit ? ' sortable' : ''}` }, edit ? grip(f) : '', head, shown ? el('div', { class: 'phsubs' },
+        edit ? (() => { const ul = el('ul', { class: 'phsub-list' }, subs.map((x, j) => el('li', { class: `ph phsub-edit sortable st-${cls(x)}` }, grip(x), el('span', { class: 'phsn', 'aria-hidden': 'true' }, '·'),
+          ...editRow(x, { remove: () => { subs.splice(j, 1); save(); } })))); sortable(ul, (a, b) => { open.add(i); reorder(subs, a, b); }, (n) => { focusAt = { sub: i, n }; }); return ul; })() : el('ul', { class: 'phsub-list' }, subs.map(subView)),
         edit ? addSub(f, i) : '') : '');
     };
     const newName = edit ? el('input', { placeholder: 'Añadir una tarea…', 'aria-label': 'Nueva tarea', style: 'flex:1;min-width:200px' }) : null;
     box.replaceChildren(
       el('div', { class: 'row', style: 'margin-bottom:8px' }, el('strong', { class: 'grow' }, `${done} de ${rows.length} tareas hechas`), el('span', { class: 'num' }, `${pct}%`)), bar(pct, 'client'),
-      el('ol', { class: 'phases-list' }, rows.map(item)),
+      (() => { const ol = el('ol', { class: 'phases-list' }, rows.map(item)); if (edit) sortable(ol, (a, b) => reorder(rows, a, b), (n) => { focusAt = { top: n }; }); return ol; })(),
       edit ? el('form', { class: 'row', style: 'margin-top:10px;gap:8px;flex-wrap:wrap', onsubmit: (e) => { e.preventDefault(); if (!newName.value.trim()) return; rows.push({ fase: newName.value.trim(), quien: 'AVANIA', estado: 'Pendiente', responsable: '', inicio: '', fecha: '', nota: '', sub: [] }); save(); } },
         newName, el('button', { class: 'btn small' }, '+ Añadir tarea')) : '');
   };
+  const draw0 = draw;
+  draw = () => { draw0(); if (edit && panel.root) { box.append(panel.root); panel.sync?.(); } if (focusAt) { const f = focusAt; focusAt = null; const t = f.top != null ? box.querySelectorAll('.phases-list > .phitem > .draghandle')[f.top] : box.querySelectorAll('.phases-list > .phitem')[f.sub]?.querySelectorAll('.phsub-edit > .draghandle')[f.n]; t?.focus(); } };
   draw();
   return box;
 }

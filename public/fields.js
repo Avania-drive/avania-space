@@ -45,6 +45,35 @@ const isMailCol = (c) => c.type === 'email' || /^(correo|email)$/i.test(c.k);
 
 let uid = 0;
 // Los avisos salen en una región viva para que el lector de pantalla los lea.
+/** Texto con negritas (**así**) y viñetas («- » o «* ») pintado como lista con negritas, sin asteriscos a la vista. Solo construye nodos: nunca inserta HTML. */
+export function richText(text) {
+  const inline = (t) => String(t).split(/(\*\*[^*]+?\*\*)/g).filter(Boolean).map((p) => (/^\*\*[^*]+\*\*$/.test(p) ? el('strong', {}, p.slice(2, -2)) : p.replace(/\*/g, '')));
+  const out = [];
+  let ul = null;
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) { ul = null; continue; }
+    const m = /^(?:[-*•]\s+)(.*)$/.exec(line);
+    if (m) { if (!ul) { ul = el('ul', { class: 'rich-ul' }); out.push(ul); } ul.append(el('li', {}, ...inline(m[1]))); }
+    else { ul = null; out.push(el('p', { class: /^\*\*[^*]+\*\*$/.test(line) || /^#{1,3}\s/.test(line) ? 'rich-lead' : '' }, ...inline(line.replace(/^#{1,3}\s+/, '')))); }
+  }
+  return el('div', { class: 'rich' }, ...out);
+}
+/** Muestra el texto maquetado y deja corregirlo con «Editar texto»; al terminar vuelve a la vista maquetada. */
+function richEditor(ta) {
+  const view = el('div', { class: 'rich-view' });
+  const edit = el('button', { type: 'button', class: 'btn ghost small', onclick: () => show(true) }, 'Editar texto');
+  const done = el('button', { type: 'button', class: 'btn ghost small', onclick: () => show(false) }, 'Listo');
+  const show = (editing) => {
+    ta.style.display = editing ? '' : 'none'; done.style.display = editing ? '' : 'none';
+    view.style.display = editing ? 'none' : ''; edit.style.display = editing ? 'none' : '';
+    if (!editing) view.replaceChildren(String(ta.value || '').trim() ? richText(ta.value) : el('p', { class: 'muted', style: 'margin:0' }, ta.getAttribute('placeholder') || 'Sin texto todavía.'));
+    else ta.focus();
+  };
+  show(!String(ta.value || '').trim());   // sin texto, se abre directamente para escribir
+  return { node: el('div', {}, view, ta, el('div', { class: 'row', style: 'margin-top:4px' }, edit, done)), refresh: () => show(false) };
+}
+
 const toasts = el('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
 document.body.append(toasts);
 export const toast = (msg) => {
@@ -323,7 +352,7 @@ export function renderSection(sec, data, { team, save, preview, clientName, clie
     }
     grid.append(el('section', { class: 'gcard' + (wide ? ' wide' : '') },
       el('header', { class: 'ghead' }, groupIcon(g.title, i), el('h2', {}, g.title.replace(/^\d+(\.\d+)?\s+/, ''))),
-      g.intro ? el('div', { class: 'gintro' }, [].concat(g.intro).map((t) => el('p', {}, t))) : '', body));
+      g.intro ? el('div', { class: `gintro${g.oneLine ? ' one-line' : ''}` }, [].concat(g.intro).map((t) => el('p', {}, t))) : '', body));
   });
   // Secciones con pestañas (p. ej. Análisis de AVANIA): cada grupo es una pestaña y solo se ve una tarjeta a la vez.
   if (sec.tabs && grid.children.length > 1) {
@@ -367,22 +396,25 @@ function field(f, data, change, team, preview) {
   let input;
   if (f.type === 'fichas') {
     const items = (data[f.k] = Array.isArray(v) ? v : []);
-    const noun = f.item || 'ficha', max = f.max || 12;
-    const grid = el('div', { class: 'fichas-q' });
+    const noun = f.item || 'ficha', max = f.max || 12, de = f.fem ? 'de la' : 'del', otro = f.fem ? 'otra' : 'otro';
+    const grid = el('div', { class: `fichas-q${f.rows ? ' fichas-rows' : ''}` });
     const actions = (r) => [
       preview && r.url ? el('button', { class: 'btn small', type: 'button', onclick: () => preview(r) }, 'Ver') : '',
       r.url ? el('a', { class: 'btn ghost small', href: r.url, target: '_blank', rel: 'noopener' }, 'Abrir en Drive ↗') : ''];
     const draw = () => {
+      if (f.rows && !readonly && !items.length) items.push({ nombre: '', url: '', resumen: '' });   // un solo archivo es lo habitual: la ficha ya sale lista para rellenar
       const cards = items.map((r, i) => {
         if (readonly) return el('article', { class: 'fq' }, el('h3', {}, r.nombre || `${noun[0].toUpperCase()}${noun.slice(1)} ${i + 1}`),
-          el('p', { class: 'fq-sum' }, r.resumen || 'Resumen pendiente'), el('div', { class: 'row fq-act' }, actions(r)));
+          el('div', { class: 'fq-sum' }, r.resumen ? richText(r.resumen) : 'Resumen pendiente'), el('div', { class: 'row fq-act' }, actions(r)));
         const clientId = ctxClient;
-        const txt = el('textarea', { rows: 6, class: 'fq-text', disabled: working.has(r), placeholder: working.has(r) ? 'Leyendo el archivo y escribiendo el resumen…' : 'Aquí aparecerá el resumen del archivo. Puedes corregirlo.', 'aria-label': 'Resumen', oninput: (e) => { r.resumen = e.target.value; change(f.k, items); } }, r.resumen || '');
+        const txtArea = el('textarea', { rows: 6, class: 'fq-text', disabled: working.has(r), placeholder: working.has(r) ? 'Leyendo el archivo y escribiendo el resumen…' : 'Aquí aparecerá el resumen del archivo. Puedes corregirlo.', 'aria-label': 'Resumen', oninput: (e) => { r.resumen = e.target.value; change(f.k, items); } }, r.resumen || '');
+        const rich = richEditor(txtArea), txt = rich.node;
         const analyze = async (fileId) => {
           working.add(r); fqErr.delete(r); draw();
           try {
             const a = await api('POST', `/api/clients/${clientId}/analisis`, { fileId, kind: f.ai });
-            r.url = a.url; r.resumen = a.resumen; if (!r.nombre) r.nombre = a.nombre; toast('Resumen escrito: revísalo');
+            r.url = a.url; r.resumen = a.resumen; if (!r.nombre) r.nombre = a.nombre;
+            const cp = a.competidores || {}; toast(cp.added || cp.updated ? `Resumen escrito. Competidores guardados en «Sus clientes, competencia y ofertas»: ${cp.added} nuevos${cp.updated ? `, ${cp.updated} completados` : ''}` : 'Resumen escrito: revísalo');
           } catch (e) { toast(e.message); fqErr.set(r, e.message); }
           working.delete(r); change(f.k, items); draw();
         };
@@ -395,12 +427,12 @@ function field(f, data, change, team, preview) {
         const act = el('div', { class: 'row fq-act' }, actions(r), clientId && !working.has(r) ? [el('button', { class: 'btn ghost small', type: 'button', onclick: choose }, r.url ? 'Cambiar archivo' : 'Elegir archivo de Drive'), r.fileId ? el('button', { class: 'btn ghost small', type: 'button', title: 'Volver a leer el archivo y escribir otro resumen', onclick: () => analyze(r.fileId) }, 'Resumir de nuevo') : ''] : '');
         return el('article', { class: 'fq' },
           el('div', { class: 'row fq-head' }, el('span', { class: 'fq-n' }, i + 1),
-            el('input', { class: 'grow', value: r.nombre || '', placeholder: `Nombre del ${noun}`, 'aria-label': `Nombre del ${noun}`, oninput: (e) => { r.nombre = e.target.value; change(f.k, items); } }),
+            el('input', { class: 'grow', value: r.nombre || '', placeholder: `Nombre ${de} ${noun}`, 'aria-label': `Nombre ${de} ${noun}`, oninput: (e) => { r.nombre = e.target.value; change(f.k, items); } }),
             el('button', { class: 'btn ghost small', type: 'button', title: 'Quitar', 'aria-label': `Quitar ${noun}`, onclick: () => { items.splice(i, 1); change(f.k, items); draw(); } }, '✕')),
           r.url ? '' : (clientId ? el('button', { class: 'btn fq-pick', type: 'button', onclick: choose }, 'Elegir archivo de Google Drive') : el('p', { class: 'muted' }, 'Sin archivo todavía.')),
           fqErr.has(r) ? el('p', { class: 'err', role: 'alert', style: 'margin:6px 0 0' }, fqErr.get(r)) : '', txt, act);
       });
-      if (!readonly && items.length < max) cards.push(el('button', { type: 'button', class: 'fq fq-add', onclick: () => { items.push({ nombre: '', url: '', resumen: '' }); draw(); grid.querySelectorAll('.fq')[items.length - 1]?.querySelector('input')?.focus(); } }, el('span', {}, '+'), `Añadir ${noun}`));
+      if (!readonly && items.length < max) cards.push(el('button', { type: 'button', class: f.rows ? 'btn ghost small fq-addrow' : 'fq fq-add', onclick: () => { items.push({ nombre: '', url: '', resumen: '' }); draw(); grid.querySelectorAll('.fq')[items.length - 1]?.querySelector('input')?.focus(); } }, ...(f.rows ? [`+ Añadir ${otro} ${noun}`] : [el('span', {}, '+'), `Añadir ${noun}`])));
       grid.replaceChildren(...(cards.length ? cards : [el('div', { class: 'ro' }, 'Lo rellenamos nosotros')]));
     };
     draw();
@@ -418,6 +450,7 @@ function field(f, data, change, team, preview) {
       const list = (Array.isArray(v) ? v : []).filter((r) => r?.url);
       return el('div', { class: 'field' }, label, list.length ? el('div', { class: 'plist' }, list.map((r) => el('div', { class: 'prow' }, el('span', { class: 'grow' }, r.nombre || 'Documento'), el('a', { class: 'btn ghost small', href: r.url, target: '_blank', rel: 'noopener' }, 'Abrir ↗')))) : el('div', { class: 'ro' }, 'Lo rellenamos nosotros'));
     }
+    if (f.type === 'textarea' && f.concl && String(v || '').trim()) return el('div', { class: 'field' }, label, el('div', { class: 'ro' }, richText(v)));
     return el('div', { class: 'field' }, label, el('div', { class: 'ro', style: 'white-space:pre-line' }, toUrl(v) ? el('a', { href: toUrl(v), target: '_blank', rel: 'noopener' }, v) : (v || 'Lo rellenamos nosotros')));
   }
   if (f.type === 'docs') {
@@ -547,11 +580,12 @@ function field(f, data, change, team, preview) {
         try {
           const fichas = (Array.isArray(data[fichasKey]) ? data[fichasKey] : []).map((r) => ({ nombre: r.nombre, resumen: r.resumen }));
           const r = await api('POST', `/api/clients/${clientId}/conclusiones`, { kind: f.concl, fichas });
-          ta.value = r.conclusiones; change(f.k, r.conclusiones); msg.textContent = 'Conclusiones escritas: revísalas y corrígelas si hace falta.';
+          ta.value = r.conclusiones; change(f.k, r.conclusiones); rich.refresh(); msg.textContent = 'Conclusiones escritas: revísalas y corrígelas si hace falta.';
         } catch (e) { msg.className = 'err'; msg.textContent = e.message; }
         btn.disabled = false;
       } }, 'Generar conclusiones con los resúmenes');
-      input = el('div', {}, ta, el('div', { class: 'row', style: 'margin-top:6px' }, btn), msg);
+      const rich = richEditor(ta);
+      input = el('div', {}, rich.node, el('div', { class: 'row', style: 'margin-top:6px' }, btn), msg);
     }
   }
   else if (f.type === 'tri' || (f.type === 'select' && f.options.length <= 3)) {

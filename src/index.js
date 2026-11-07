@@ -18,10 +18,10 @@ import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthen
 import { PUBLIC_URL, sendHtml, sendMail } from './mailer.js';
 import crypto from 'node:crypto';
 import { driveListing, folderIdOf, createFolder, readClientFile, rootId as driveRootId } from './drive.js';
-import { summarize, conclude } from './ai.js';
+import { summarize, conclude, mergeCompetidores } from './ai.js';
 import { syncClickup, clickupEnabled, clickupTargets } from './clickup.js';
 import { viewOn, viewMap, VIEW_KEYS, denyView } from './visibility.js';
-import { tasksOf, timelineOf, fasesOf, cleanFases, fasesBase } from './plan.js';
+import { tasksOf, timelineOf, fasesOf, cleanFases, fasesBase, comentariosPorId, publicFases } from './plan.js';
 import { buildReport, REPORT_TO } from './report.js';
 import { zonaStudy } from './zona.js';
 import { loadClientSession, portalGate, mountPortal } from './portal.js';
@@ -518,8 +518,23 @@ app.get('/api/clients/:id', ...staff, wrap(async (req, res) => {
   const open = recent(req);
   const shown = open ? sections : Object.fromEntries(Object.entries(sections).map(([k, v]) => [k, RESTRICTED.has(k) ? { _avania: v._avania || [] } : v]));
   res.json({ client: c, views: viewMap(c), statuses: statusesOf(stRow?.statuses), restricted: !open, sections: shown, meta, progress: progress(sections, tpl.allowed, tpl.dental), gates: gates(sections, cr, tpl.allowed), allowed: tpl.allowed ? [...tpl.allowed] : null, dental: tpl.dental,
-    tasks: tasksOf(sections, cr, { allowed: tpl.allowed, dental: tpl.dental }), timeline: timelineOf(sections, { includeEmpty: true }), fases: fasesOf(sections), team: await teamNames(sections), onboarding: onboardingState(c, sections) });
+    tasks: tasksOf(sections, cr, { allowed: tpl.allowed, dental: tpl.dental }), timeline: timelineOf(sections, { includeEmpty: true }), fases: fasesOf(sections), team: await teamNames(sections), clientPeople: await clientPeople(c.id, sections), onboarding: onboardingState(c, sections) });
 }));
+
+// Personas del cliente a las que también se puede asignar una tarea (con su correo): las de «Quién forma la empresa» y los usuarios de su portal.
+async function clientPeople(clientId, sections) {
+  const out = [];
+  const seen = new Set();
+  const add = (nombre, correo, cargo) => {
+    nombre = String(nombre || '').trim(); correo = String(correo || '').trim().toLowerCase();
+    if (!nombre || (correo && seen.has(correo)) || (!correo && out.some((x) => x.nombre === nombre))) return;
+    if (correo) seen.add(correo);
+    out.push({ nombre, correo, cargo: String(cargo || '').trim() });
+  };
+  for (const r of Array.isArray((sections.clinica || {}).responsables) ? sections.clinica.responsables : []) add(r?.nombre, r?.correo, r?.cargo);
+  for (const u of (await q('select name, email, role from client_users where client_id = $1 and active order by role, created_at', [clientId])).rows) add(u.name || u.email, u.email, u.role === 'responsable' ? 'Responsable en el portal' : '');
+  return out;
+}
 
 // Personas del equipo de AVANIA a las que se puede asignar una tarea: las de la ficha del cliente y los usuarios activos del panel.
 async function teamNames(sections) {
@@ -861,7 +876,7 @@ app.get(['/api/f/:token', '/api/p/form'], byClient, wrap(async (req, res) => {
   const tpl = await templateOf(req.client.category, req.client.sections);
   res.json({
     client: { name: req.client.name, manager: req.client.account_manager || null }, sections, progress: forClientProgress(progress(all, tpl.allowed, tpl.dental)),
-    tasks: forClientTasks(tasksOf(all, crn, { allowed: tpl.allowed, dental: tpl.dental })), timeline: timelineOf(all), fases: fasesOf(all),
+    tasks: forClientTasks(tasksOf(all, crn, { allowed: tpl.allowed, dental: tpl.dental })), timeline: timelineOf(all), fases: publicFases(fasesOf(all)),
     allowed: tpl.allowed ? [...tpl.allowed] : null, dental: tpl.dental,
     gates: gates(sections, crn, tpl.allowed), contact: process.env.MAIL_REPLY_TO || null,
     role: req.portal ? req.cu.role : null, views: viewMap(req.client),
@@ -919,11 +934,27 @@ app.put(['/api/f/:token/credentials/:id', '/api/p/form/credentials/:id'], byClie
 // Fases del proceso (de los documentos de investigación al lanzamiento): las edita la agencia y el cliente las ve. `reset` vuelve a la lista estándar.
 app.put('/api/clients/:id/proceso', ...staff, wrap(async (req, res) => {
   const c = await clientOf(req, res); if (!c) return;
-  const fases = req.body.reset ? fasesBase() : cleanFases(req.body.fases);
+  const cur = (await sectionsOf(c.id)).proceso?.fases;
+  const fases = req.body.reset ? fasesBase() : cleanFases(req.body.fases, { comments: comentariosPorId(cur) });
   if (!fases.length) return res.status(400).json({ error: 'Debe quedar al menos una fase' });
   await saveSection(c, 'proceso', { fases }, req.user.email);
   const all = await sectionsOf(c.id);
   res.json({ fases: fasesOf(all), timeline: timelineOf(all, { includeEmpty: true }) });
+}));
+
+// Comentario en una tarea (o subtarea): lo escribe un usuario del equipo; autor y fecha los pone el servidor.
+app.post('/api/clients/:id/proceso/comentario', ...staff, wrap(async (req, res) => {
+  const c = await clientOf(req, res); if (!c) return;
+  const texto = String((req.body || {}).texto || '').trim().slice(0, 1500);
+  const id = String((req.body || {}).id || '');
+  if (!texto) return res.status(400).json({ error: 'Escribe el comentario' });
+  const all = await sectionsOf(c.id);
+  const fases = JSON.parse(JSON.stringify(fasesOf(all)));
+  const t = fases.flatMap((f) => [f, ...(f.sub || [])]).find((x) => x.id && x.id === id);
+  if (!t) return res.status(404).json({ error: 'No encuentro esa tarea: recarga la página' });
+  t.coment = [...(Array.isArray(t.coment) ? t.coment : []), { autor: req.user.name || req.user.email, fecha: new Date().toISOString(), texto }].slice(-200);
+  await saveSection(c, 'proceso', { fases: cleanFases(fases) }, req.user.email);
+  res.json({ fases: fasesOf(await sectionsOf(c.id)) });
 }));
 
 // Sincroniza las tareas con ClickUp: si «Enlace de ClickUp» apunta a un espacio que responde, se usa; si no, se crea uno con el nombre del cliente
@@ -955,7 +986,7 @@ app.post('/api/clients/:id/clickup/sync', ...staff, requireRole('super_admin', '
     await saveSection(c, 'proceso', { fases: cleanFases(r.fases), clickup: { list_id: r.listId, space_id: r.spaceId, synced_at: new Date().toISOString() } }, req.user.email);
     if (r.link && r.link !== (all.proyecto || {}).enlace_clickup) await saveSection(c, 'proyecto', { enlace_clickup: r.link }, req.user.email);
     const now = await sectionsOf(c.id);
-    res.json({ ok: true, link: r.link, spaceCreated: r.spaceCreated, created: r.created, updated: r.updated, pulled: r.pulled, notified: r.notified, unassigned: r.unassigned, adjusted: r.adjusted, fases: fasesOf(now), timeline: timelineOf(now, { includeEmpty: true }) });
+    res.json({ ok: true, link: r.link, spaceCreated: r.spaceCreated, created: r.created, updated: r.updated, pulled: r.pulled, notified: r.notified, unassigned: r.unassigned, external: r.external, adjusted: r.adjusted, fases: fasesOf(now), timeline: timelineOf(now, { includeEmpty: true }) });
   } finally { syncing.delete(c.id); }
 }));
 
@@ -979,8 +1010,16 @@ app.post('/api/clients/:id/analisis', ...staff, wrap(async (req, res) => {
   const c = await clientOf(req, res); if (!c) return;
   const b = req.body || {};
   const file = await readClientFile((await sectionsOf(c.id)).proyecto?.enlace_drive, String(b.fileId || ''));
-  const resumen = await summarize({ kind: String(b.kind || ''), clientName: c.name, file });
-  res.json({ nombre: file.name, url: file.url, resumen });
+  const { resumen, competidores } = await summarize({ kind: String(b.kind || ''), clientName: c.name, file });
+  // En la competencia, los competidores que salen en el análisis se guardan también en «Sus clientes, competencia y ofertas › Competencia» (una fila por competidor).
+  let added = 0, updated = 0;
+  if (competidores.length) {
+    const cur = ((await sectionsOf(c.id)).mercado || {}).competidores;
+    const m = mergeCompetidores(cur, competidores);
+    ({ added, updated } = m);
+    if (added || updated) await saveSection(c, 'mercado', { competidores: m.rows }, `${req.user.email} (IA)`);
+  }
+  res.json({ nombre: file.name, url: file.url, resumen, competidores: { added, updated, found: competidores.length } });
 }));
 
 // Conclusiones de una pestaña de «Nuestros análisis» a partir de los resúmenes de sus fichas (no guarda: la ficha lo guarda al aceptar).

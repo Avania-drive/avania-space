@@ -94,7 +94,7 @@ export async function syncClickup({ link, clientName, fases, state = {}, target 
     if (tasks.length < 100) break;
   }
   let created = 0, updated = 0, pulled = 0;
-  const notified = [], unassigned = [];
+  const notified = [], unassigned = [], external = [];
   const today = new Date().toISOString().slice(0, 10);
   const closedStatus = (t) => t.status?.type === 'closed';
   const dateText = (iso) => (iso ? iso.split('-').reverse().join('/') : 'sin fecha');
@@ -104,21 +104,26 @@ export async function syncClickup({ link, clientName, fases, state = {}, target 
   const dates = (f) => {
     const end = ms(f.fecha, true);
     let start = ms(f.inicio || today);
-    if (end && start > end) { start = ms(f.fecha); adjusted.push(f.fase); }
+    if (end && start > end) { start = ms(f.fecha); if (f.estado !== 'Hecho') adjusted.push(f.fase); }   // en una tarea ya hecha las fechas no importan: no se avisa
     return { start_date: start, start_date_time: false, ...(end ? { due_date: end, due_date_time: false } : {}) };
   };
   async function one(f, parent) {
     const r = f.cu ? remote.get(String(f.cu)) : null;
     if (r && closedStatus(r) && f.estado !== 'Hecho') { f.estado = 'Hecho'; pulled += 1; }   // lo cerrado en ClickUp se trae a Space
-    const p = person(f.responsable);
-    if (f.responsable && !p) unassigned.push(f.responsable);
+    // Responsable del cliente: se asigna solo si su correo es de alguien del equipo de ClickUp (invitado); si no, queda anotado en la descripción.
+    const mail = String(f.resp_correo || '').toLowerCase();
+    const p = mail ? (members.find((m) => String(m.email || '').toLowerCase() === mail) || null) : person(f.responsable);
+    if (f.responsable && !p && !mail) unassigned.push(f.responsable);
+    if (mail && !p) external.push(f.responsable);
+    const enlaces = (f.links || []).map((l) => `${l.titulo || 'Enlace'}: ${l.url}`).join('\n');
+    const desc = [f.desc || f.nota, enlaces ? `Enlaces:\n${enlaces}` : '', mail && !p ? `Responsable del cliente: ${f.responsable} (${mail})` : ''].filter(Boolean).join('\n\n');
     let id = r ? String(r.id) : null, isNew = false;
     if (id) {
       const had = (r.assignees || []).some((a) => p && String(a.id) === String(p.id));
-      await cu('PUT', `/task/${id}`, { name: f.fase, ...(f.nota ? { description: f.nota } : {}), ...dates(f), ...(p && !had ? { assignees: { add: [p.id], rem: [] } } : {}) });
+      await cu('PUT', `/task/${id}`, { name: f.fase, ...(desc ? { description: desc } : {}), ...dates(f), ...(p && !had ? { assignees: { add: [p.id], rem: [] } } : {}) });
       updated += 1; isNew = !!(p && !had);
     } else {
-      id = String((await cu('POST', `/list/${listId}/task`, { name: f.fase, ...(f.nota ? { description: f.nota } : {}), ...dates(f), ...(p ? { assignees: [p.id], notify_all: true } : {}), ...(parent ? { parent } : {}) })).id);
+      id = String((await cu('POST', `/list/${listId}/task`, { name: f.fase, ...(desc ? { description: desc } : {}), ...dates(f), ...(p ? { assignees: [p.id], notify_all: true } : {}), ...(parent ? { parent } : {}) })).id);
       created += 1; isNew = !!p;
     }
     f.cu = id;
@@ -136,5 +141,5 @@ export async function syncClickup({ link, clientName, fases, state = {}, target 
     const parentId = await one(f, null);
     for (const s of f.sub || []) await one(s, parentId);
   }
-  return { link: spaceUrl(team.id, space.id), spaceCreated, spaceId: String(space.id), listId: String(listId), fases, created, updated, pulled, notified: [...new Set(notified)], unassigned: [...new Set(unassigned)], adjusted: [...new Set(adjusted)] };
+  return { link: spaceUrl(team.id, space.id), spaceCreated, spaceId: String(space.id), listId: String(listId), fases, created, updated, pulled, notified: [...new Set(notified)], unassigned: [...new Set(unassigned)], external: [...new Set(external)], adjusted: [...new Set(adjusted)] };
 }

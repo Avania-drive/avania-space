@@ -688,3 +688,7 @@ Petición de Pascual: ordenar el onboarding en 1) la empresa y quién la forma, 
 - **Lo del panel es interno:** el cliente no ve descripción, enlaces, dependencias, comentarios, ids ni correos (`publicFases` en el portal y en el formulario por token).
 - ClickUp: la descripción de la tarea incluye la descripción de Space y sus enlaces.
 - Pendiente (siguiente paso acordado): vista «Mis tareas» de todos los clientes y avisos por correo (asignación y fechas) para poder prescindir de ClickUp.
+
+## 10-nov-2026 · Repaso de cierre
+- Sin cambios de código hoy. Repositorio limpio en `main` (último commit `49b4cf5`); servicio `avania-space` reiniciado.
+- Pendiente (de antes): vista «Mis tareas» de todos los clientes y avisos por correo; token de ClickUp.

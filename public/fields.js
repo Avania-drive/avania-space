@@ -699,55 +699,100 @@ export function renderCredentials(root, { mode, services, list, create, update, 
     }
   }
 
-  // Cada credencial es una fila desplegable: cerrada solo se ve el servicio, el estado y si tiene contraseña; abierta, sus datos
-  // en una cuadrícula que se adapta al ancho (nada se sale por la derecha, ni en pantallas estrechas).
+  // Alta mínima y buscador (16-nov-2026). Arriba: buscador por servicio y una línea para dar de alta —aplicación o servicio, correo y la
+  // contraseña escrita dos veces—; cada credencial es una fila que se despliega para el resto (enlace de acceso, notas, con qué se entra, estado).
+  const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
   const openIds = new Set();
-  const draw = () => body.replaceChildren(...rows.map((r) => {
-    const pw = el('input', { type: 'password', autocomplete: 'new-password', placeholder: r.has_password ? '••••••••' : 'Sin contraseña',
-      'aria-label': 'Contraseña',
-      onchange: async (e) => { if (!e.target.value) return; try { Object.assign(r, (await update(r.id, { password: e.target.value })).credential); e.target.value = ''; e.target.placeholder = '••••••••'; mark('Guardado ✓', 'ok'); draw(); } catch (er) { mark(er.message, 'bad'); } } });
-    const pwCell = el('div', { class: 'pwcell' }, pw);
-    if (mode === 'team' && r.has_password && canSee) {
-      pwCell.append(el('button', { class: 'btn ghost small', onclick: () => doReveal(r, false, pw) }, 'Ver'),
-        el('button', { class: 'btn ghost small', onclick: () => doReveal(r, true, pw) }, 'Copiar'));
-    } else if (mode === 'client' && r.has_password) pwCell.append(el('span', { class: 'pill ok' }, 'guardada'));
+  let query = '';
+  const byService = () => rows.sort((a, b) => String(a.service).localeCompare(String(b.service), 'es', { sensitivity: 'base' }));
+
+  const sumKids = (r) => [
+    el('strong', { class: 'svc' }, r.service),
+    el('span', { class: 'muted sum' }, [r.company, r.username || r.email].filter(Boolean).join(' · ')),
+    el('span', { class: 'grow' }),
+    ssoPills(r.login_with),
+    r.has_password || !(r.login_with || []).length ? el('span', { class: 'pill ' + (r.has_password ? 'ok' : 'warn') }, r.has_password ? 'contraseña guardada' : 'sin contraseña') : null,
+    el('span', { class: 'pill ' + STATUS[r.status] }, r.status),
+    el('span', { class: 'chev' }, '›')].filter(Boolean);
+
+  // Cada credencial es una fila desplegable: cerrada solo se ve el servicio, el correo, con qué se entra y si tiene contraseña; abierta, sus datos
+  // en una cuadrícula que se adapta al ancho (nada se sale por la derecha, ni en pantallas estrechas). Cada campo se guarda al salir de él.
+  const rowNode = (r) => {
+    const sum = el('summary', {}, sumKids(r));
+    const save = async (patch) => {
+      try { Object.assign(r, (await update(r.id, patch)).credential); sum.replaceChildren(...sumKids(r)); mark('Guardado ✓', 'ok'); return true; }
+      catch (er) { mark(er.message, 'bad'); return false; }
+    };
+    const field = (label, control) => el('label', {}, label, control);
+    const txt = (k, ph, type = 'text') => el('input', { type, value: r[k] || '', placeholder: ph, 'aria-label': ph, autocomplete: 'off', onchange: (e) => save({ [k]: e.target.value }) });
+
+    const pw = el('input', { type: 'password', autocomplete: 'new-password', placeholder: r.has_password ? 'Nueva contraseña' : 'Contraseña', 'aria-label': 'Contraseña' });
+    const pw2 = el('input', { type: 'password', autocomplete: 'new-password', placeholder: 'Repetir contraseña', 'aria-label': 'Repetir contraseña' });
+    const pwErr = el('div', { class: 'err', role: 'alert' });
+    const setPw = async () => {
+      pwErr.textContent = '';
+      if (!pw.value) { pwErr.textContent = 'Escribe la contraseña.'; pw.focus(); return; }
+      if (pw.value !== pw2.value) { pwErr.textContent = 'Las contraseñas no coinciden.'; pw2.focus(); return; }
+      if (await save({ password: pw.value, password2: pw2.value })) { pw.value = pw2.value = ''; pw.placeholder = 'Nueva contraseña'; }
+    };
+    const pwCell = el('div', { class: 'pwcell vpw2' }, el('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap' }, pw, pw2,
+      el('button', { type: 'button', class: 'btn small', onclick: setPw }, r.has_password ? 'Cambiar' : 'Guardar'),
+      mode === 'team' && r.has_password && canSee ? [el('button', { type: 'button', class: 'btn ghost small', onclick: () => doReveal(r, false, pw) }, 'Ver'), el('button', { type: 'button', class: 'btn ghost small', onclick: () => doReveal(r, true, pw) }, 'Copiar')] : '',
+      mode === 'client' && r.has_password ? el('span', { class: 'pill ok' }, 'guardada') : ''), pwErr);
+
     const st = mode === 'team'
-      ? el('select', { onchange: async (e) => { try { Object.assign(r, (await update(r.id, { status: e.target.value })).credential); mark('Guardado ✓', 'ok'); draw(); } catch (er) { mark(er.message, 'bad'); } } },
+      ? el('select', { onchange: async (e) => { if (await save({ status: e.target.value })) draw(); } },
         ['pendiente', 'recibida', 'verificada'].map((s) => el('option', { value: s, selected: r.status === s }, s)))
       : el('span', { class: 'pill ' + STATUS[r.status] }, r.status);
-    const field = (label, control) => el('label', {}, label, control);
-    return el('details', { class: 'cred', open: openIds.has(r.id), ontoggle: (e) => (e.target.open ? openIds.add(r.id) : openIds.delete(r.id)) },
-      el('summary', {},
-        el('strong', { class: 'svc' }, r.service),
-        el('span', { class: 'muted sum' }, [r.company, r.username || r.email].filter(Boolean).join(' · ')),
-        el('span', { class: 'grow' }),
-        ssoPills(r.login_with),
-        r.has_password || !(r.login_with || []).length ? el('span', { class: 'pill ' + (r.has_password ? 'ok' : 'warn') }, r.has_password ? 'contraseña guardada' : 'sin contraseña') : null,
-        el('span', { class: 'pill ' + STATUS[r.status] }, r.status),
-        el('span', { class: 'chev' }, '›')),
+    return el('details', { class: 'cred', 'data-id': r.id, open: openIds.has(r.id), ontoggle: (e) => { if (e.target !== e.currentTarget) return; e.currentTarget.open ? openIds.add(r.id) : openIds.delete(r.id); } },
+      sum,
       el('div', { class: 'credgrid' },
-        field('Empresa', cell(r, 'company', 'Empresa')), field('Usuario', cell(r, 'username', 'Usuario')),
-        field('Correo', cell(r, 'email', 'Correo', 'email')),
-        el('div', { class: 'ssofield' }, el('span', { class: 'ssol' }, 'Se entra con (sin contraseña)'), ssoPicker(r.login_with || [], async (list) => { try { Object.assign(r, (await update(r.id, { login_with: list })).credential); mark('Guardado ✓', 'ok'); draw(); } catch (er) { mark(er.message, 'bad'); } })),
-        field('Contraseña', pwCell),
-        field('Enlace de acceso', urlRow(cell(r, 'url', 'Enlace de acceso', 'url'))), field('Notas', cell(r, 'notes', 'Notas')),
+        field('Correo', txt('email', 'Correo', 'email')), field('Usuario', txt('username', 'Usuario (si no es el correo)')),
+        field('Enlace de acceso', urlRow(txt('url', 'Enlace de acceso', 'url'))), field('Empresa', txt('company', 'Empresa')),
+        el('div', { class: 'ssofield' }, el('span', { class: 'ssol' }, 'Se entra con (sin contraseña)'), ssoPicker(r.login_with || [], (list) => save({ login_with: list }))),
+        el('div', { class: 'vpwwrap' }, el('span', { class: 'ssol' }, 'Contraseña'), pwCell),
+        el('label', { class: 'vnotes' }, 'Notas', el('textarea', { rows: 3, 'aria-label': 'Notas', onchange: (e) => save({ notes: e.target.value }) }, r.notes || '')),
         mode === 'team' ? field('Estado', st) : '',
-        remove ? el('div', { class: 'credfoot' }, el('button', { class: 'btn ghost small', onclick: async () => {
+        remove ? el('div', { class: 'credfoot' }, el('button', { type: 'button', class: 'btn ghost small danger', onclick: async () => {
           if (!(await askConfirm({ title: 'Borrar credencial', text: `¿Borrar la fila de ${r.service}? No se puede deshacer.`, ok: 'Borrar', danger: true }))) return;
           try { await remove(r.id); rows = rows.filter((x) => x.id !== r.id); draw(); } catch (er) { mark(er.message, 'bad'); } } }, 'Borrar esta credencial')) : ''));
-  }));
+  };
 
-  const svc = el('select', {}, el('option', { value: '' }, 'Añadir servicio…'), services.map((s) => el('option', { value: s }, s)), el('option', { value: '__otro' }, 'Otro…'));
-  svc.addEventListener('change', async () => {
-    let name = svc.value; svc.value = '';
-    if (name === '__otro') name = (await askText({ title: 'Añadir servicio', label: 'Nombre del servicio', ok: 'Añadir' })) || '';
-    if (!name) return;
-    try { const c = (await create({ service: name })).credential; rows.push(c); openIds.add(c.id); draw(); } catch (e) { mark(e.message, 'bad'); }
-  });
+  const count = el('span', { class: 'muted' });
+  const draw = () => {
+    const q = norm(query);
+    const shown = q ? rows.filter((r) => norm([r.service, r.company, r.username, r.email, r.url].join(' ')).includes(q)) : rows;
+    count.textContent = rows.length ? (q ? `${shown.length} de ${rows.length}` : `${rows.length} ${rows.length === 1 ? 'servicio' : 'servicios'}`) : '';
+    body.replaceChildren(...(shown.length ? shown.map(rowNode)
+      : [el('div', { class: 'vempty' }, rows.length ? el('span', {}, `Nada con «${query.trim()}». `, el('button', { type: 'button', class: 'btn ghost small', onclick: () => { fName.value = query.trim(); fName.focus(); } }, `Añadir «${query.trim()}»`)) : 'Todavía no hay ninguna. Añade la primera arriba.')]));
+  };
+
+  const search = el('input', { type: 'search', class: 'vsearch', placeholder: 'Buscar por aplicación o servicio…', 'aria-label': 'Buscar por aplicación o servicio', autocomplete: 'off', spellcheck: false, oninput: (e) => { query = e.target.value; draw(); } });
+  const dl = el('datalist', { id: 'vq-services' }, (services || []).map((s) => el('option', { value: s })));   // los servicios habituales, como sugerencia al escribir
+  const fName = el('input', { id: 'vq-name', name: 'service', type: 'text', required: true, autocomplete: 'off', list: 'vq-services', placeholder: 'Ej.: Canva' });
+  const fMail = el('input', { id: 'vq-mail', name: 'email', type: 'text', inputmode: 'email', autocomplete: 'off', placeholder: 'correo@ejemplo.com' });
+  const fP1 = el('input', { id: 'vq-p1', name: 'password', type: 'password', autocomplete: 'new-password' });
+  const fP2 = el('input', { id: 'vq-p2', name: 'password2', type: 'password', autocomplete: 'new-password' });
+  const addErr = el('div', { class: 'err', role: 'alert' });
+  const lab = (id, t, input) => el('label', { for: id }, t, input);
+  const add = el('form', { class: 'vq', novalidate: true, onsubmit: async (e) => {
+    e.preventDefault(); addErr.textContent = ''; fP2.removeAttribute('aria-invalid');
+    const service = fName.value.trim();
+    if (!service) { addErr.textContent = 'Escribe la aplicación o el servicio.'; fName.focus(); return; }
+    if ((fP1.value || fP2.value) && fP1.value !== fP2.value) { addErr.textContent = 'Las contraseñas no coinciden.'; fP2.setAttribute('aria-invalid', 'true'); fP2.focus(); return; }
+    if (rows.some((r) => norm(r.service) === norm(service) && norm(r.email || r.username) === norm(fMail.value))) { addErr.textContent = `Ya hay «${service}» con ese correo.`; return; }
+    try {
+      const c = (await create({ service, ...(fMail.value.trim() && { email: fMail.value.trim() }), ...(fP1.value && { password: fP1.value, password2: fP2.value }) })).credential;
+      rows.push(c); byService(); add.reset(); query = ''; search.value = ''; draw(); mark('');
+      const n = body.querySelector(`[data-id="${c.id}"]`); if (n) { n.classList.add('flash'); n.scrollIntoView({ block: 'nearest' }); }
+      toast(`«${c.service}» añadido`); fName.focus();
+    } catch (er) { addErr.textContent = er.message; }
+  } }, lab('vq-name', 'Aplicación o servicio', fName), dl, lab('vq-mail', 'Correo electrónico', fMail), lab('vq-p1', 'Contraseña', fP1), lab('vq-p2', 'Repetir contraseña', fP2), el('button', { class: 'btn' }, 'Añadir'), addErr);
 
   root.replaceChildren(
     mode === 'client' ? el('div', { class: 'intro' }, 'Preferimos acceso delegado (como socio o administrador) y nunca os pediremos la contraseña si existe esa opción. Si no es posible, podéis guardarla aquí: se cifra al instante y nadie del exterior puede leerla. Vosotros tampoco podréis verla de nuevo, solo cambiarla.') : '',
-    body,
-    el('div', { class: 'row', style: 'margin-top:10px' }, svc, el('span', { class: 'grow' }), el('button', { class: 'btn ghost small', onclick: () => { rows.forEach((r) => openIds.add(r.id)); draw(); } }, 'Abrir todas'), el('button', { class: 'btn ghost small', onclick: () => { openIds.clear(); draw(); } }, 'Cerrar todas'), status));
+    search, add,
+    el('div', { class: 'row', style: 'margin:0 0 8px' }, count, el('span', { class: 'grow' }), el('button', { type: 'button', class: 'btn ghost small', onclick: () => { rows.forEach((r) => openIds.add(r.id)); draw(); } }, 'Abrir todas'), el('button', { type: 'button', class: 'btn ghost small', onclick: () => { openIds.clear(); draw(); } }, 'Cerrar todas'), status),
+    body);
   list().then((r) => { rows = r.credentials; draw(); });
 }

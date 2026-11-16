@@ -348,6 +348,8 @@ export async function clientUsersTab(main, clientId) {
 }
 
 // ───────── Bóveda de herramientas (solo administradores) ─────────
+// Alta mínima (16-nov-2026): arriba un buscador y una sola línea para dar de alta —aplicación o servicio, correo y contraseña escrita dos veces—;
+// cada servicio es una fila que se despliega para poner el enlace de acceso, las notas, con qué se entra (Google, Meta, Apple…) y el resto de datos.
 export async function vaultView(view, { askCode }) {
   const lock = () => {
     const err = el('div', { class: 'err', role: 'alert' });
@@ -372,53 +374,112 @@ export async function vaultView(view, { askCode }) {
     if (copy) { await navigator.clipboard.writeText(r.secret); toast('Copiado'); } else notice({ title: `${t.name} · ${field === 'api_key' ? 'clave API' : 'contraseña'}`, secret: r.secret, ok: 'Cerrar' });
   };
 
-  const form = (t) => new Promise((resolve) => {
-    const v = t || {};
-    const f = (k, label, type = 'text', extra = {}) => { const id = `vt-${k}`; return el('div', { class: 'grow', style: 'min-width:220px' }, el('label', { for: id }, label), el('input', { id, name: k, type, value: v[k] ?? '', autocomplete: 'off', ...extra })); };
-    const notes = el('textarea', { id: 'vt-notes', name: 'notes', rows: 3 }, v.notes || '');
-    const err = el('div', { class: 'err', role: 'alert' });
-    const sso = ssoPicker(t?.login_with || []);
-    const card = el('form', { class: 'card', style: 'max-width:640px', onsubmit: async (e) => {
-      e.preventDefault(); err.textContent = '';
-      const b = Object.fromEntries([...new FormData(e.target)].filter(([k, x]) => x !== '' || !['password', 'api_key'].includes(k)));
-      b.notes = notes.value; b.login_with = sso.value();
-      try { const r = await guard(() => (t ? api('PUT', `/api/vault/${t.id}`, b) : api('POST', '/api/vault', b))); d.close(r.tool); } catch (er) { err.textContent = er.message; }
-    } }, el('h2', {}, t ? `Editar ${t.name}` : 'Nueva herramienta'),
-    el('div', { class: 'row' }, f('name', 'Nombre', 'text', { required: true, 'data-autofocus': '' }), f('category', 'Categoría')),
-    el('div', { class: 'row' }, f('purpose', 'Para qué sirve'), f('url', 'Dirección (https://…)', 'url')),
-    el('div', { class: 'row' }, f('username', 'Usuario o correo de acceso'), f('used_by', 'Quién la usa')),
-    el('div', { class: 'row' }, f('password', t?.has_password ? 'Contraseña (déjala vacía para no cambiarla)' : 'Contraseña', 'password', { autocomplete: 'new-password' }), f('api_key', t?.has_api_key ? 'Clave API (vacía = sin cambios)' : 'Clave API', 'password', { autocomplete: 'new-password' })),
-    el('div', { class: 'ssofield' }, el('span', { class: 'ssol' }, 'Se entra con (no hace falta contraseña)'), sso),
-    el('div', { class: 'row' }, f('cost', 'Coste (30 €/mes…)'), f('renewal', 'Renovación', 'date')),
-    el('label', { for: 'vt-notes' }, 'Notas'), notes, err,
-    el('div', { class: 'row end', style: 'margin-top:12px' }, el('button', { type: 'button', class: 'btn ghost', onclick: () => d.close(null) }, 'Cancelar'), el('button', { class: 'btn' }, 'Guardar')));
-    const d = openModal(card, { label: 'Herramienta', onClose: (x) => resolve(x ?? null) });
-  });
+
+  const norm = (s) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const fixUrl = (v) => { const t = String(v ?? '').trim(); return !t ? '' : /^https?:\/\//i.test(t) ? t : `https://${t.replace(/^\/+/, '')}`; };
+  let tools = [], query = '';
+  const openIds = new Set();
+  const status = el('span', { class: 'saved', role: 'status', 'aria-live': 'polite' });
+  const mark = (txt, cls = '') => { status.className = 'saved ' + cls; status.textContent = txt; };
+
+  // Una fila: cerrada, el servicio, el correo y cómo se entra; abierta, todo lo demás. Cada campo se guarda al salir de él.
+  const row = (t) => {
+    const sumKids = () => [
+      el('span', { class: 'logo vlogo', 'aria-hidden': 'true', style: `background:hsl(${hue(t.name)} 45% 40%)` }, t.name[0].toUpperCase()),
+      el('strong', { class: 'svc' }, t.name),
+      el('span', { class: 'muted sum' }, [t.username, t.category].filter(Boolean).join(' · ')),
+      el('span', { class: 'grow' }),
+      ssoPills(t.login_with),
+      t.has_password || !(t.login_with || []).length ? el('span', { class: 'pill ' + (t.has_password ? 'ok' : 'warn') }, t.has_password ? 'contraseña guardada' : 'sin contraseña') : null,
+      el('span', { class: 'chev' }, '›')];
+    const sum = el('summary', {}, sumKids());
+    const upd = async (patch) => {
+      try { const r = await guard(() => api('PUT', `/api/vault/${t.id}`, patch)); Object.assign(t, r.tool); sum.replaceChildren(...sumKids().filter(Boolean)); mark('Guardado ✓', 'ok'); return true; }
+      catch (e) { mark(e.message, 'bad'); return false; }
+    };
+    const txt = (k, label, ph = '', type = 'text', conv = (v) => v) => el('label', {}, label, el('input', { type, value: t[k] ?? '', placeholder: ph, autocomplete: 'off', onchange: (e) => { const v = conv(e.target.value); if (k === 'url') e.target.value = v; upd({ [k]: v }); } }));
+
+    const p1 = el('input', { type: 'password', autocomplete: 'new-password', placeholder: t.has_password ? 'Nueva contraseña' : 'Contraseña', 'aria-label': 'Contraseña' });
+    const p2 = el('input', { type: 'password', autocomplete: 'new-password', placeholder: 'Repetir contraseña', 'aria-label': 'Repetir contraseña' });
+    const pwErr = el('div', { class: 'err', role: 'alert' });
+    const setPw = async () => {
+      pwErr.textContent = '';
+      if (!p1.value) { pwErr.textContent = 'Escribe la contraseña.'; p1.focus(); return; }
+      if (p1.value !== p2.value) { pwErr.textContent = 'Las contraseñas no coinciden.'; p2.focus(); return; }
+      if (await upd({ password: p1.value, password2: p2.value })) { p1.value = p2.value = ''; p1.placeholder = 'Nueva contraseña'; }
+    };
+    const pwBox = el('div', { class: 'vpw' }, el('span', { class: 'ssol' }, 'Contraseña'),
+      el('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap' }, p1, p2, el('button', { type: 'button', class: 'btn small', onclick: setPw }, t.has_password ? 'Cambiar' : 'Guardar'),
+        t.has_password ? [el('button', { type: 'button', class: 'btn ghost small', onclick: () => reveal(t, 'password', false) }, 'Ver'), el('button', { type: 'button', class: 'btn ghost small', onclick: () => reveal(t, 'password', true) }, 'Copiar')] : ''),
+      pwErr);
+
+    const more = el('details', { class: 'vmore' }, el('summary', {}, 'Más datos (categoría, coste, renovación, clave API…)'),
+      el('div', { class: 'credgrid' }, txt('category', 'Categoría'), txt('purpose', 'Para qué sirve'), txt('used_by', 'Quién la usa'), txt('cost', 'Coste (30 €/mes…)'),
+        el('label', {}, 'Renovación', el('input', { type: 'date', value: t.renewal || '', onchange: (e) => upd({ renewal: e.target.value }) })),
+        el('div', {}, el('label', {}, t.has_api_key ? 'Clave API (vacía = sin cambios)' : 'Clave API', el('input', { type: 'password', autocomplete: 'new-password', onchange: async (e) => { if (e.target.value && await upd({ api_key: e.target.value })) e.target.value = ''; } })),
+          t.has_api_key ? el('div', { class: 'row', style: 'gap:6px;margin-top:6px' }, el('button', { type: 'button', class: 'btn ghost small', onclick: () => reveal(t, 'api_key', false) }, 'Ver clave'), el('button', { type: 'button', class: 'btn ghost small', onclick: () => reveal(t, 'api_key', true) }, 'Copiar clave')) : '')));
+
+    const notes = el('textarea', { rows: 3, 'aria-label': 'Notas', onchange: (e) => upd({ notes: e.target.value }) }, t.notes || '');
+    return el('details', { class: 'cred vrow', 'data-id': t.id, open: openIds.has(t.id), ontoggle: (e) => { if (e.target !== e.currentTarget) return; e.currentTarget.open ? openIds.add(t.id) : openIds.delete(t.id); } }, sum,
+      el('div', { class: 'credgrid' },
+        txt('username', 'Correo o usuario', 'correo@ejemplo.com'),
+        txt('url', 'Enlace de acceso', 'https://…', 'text', fixUrl),
+        el('div', { class: 'ssofield' }, el('span', { class: 'ssol' }, 'Se entra con (no hace falta contraseña)'), ssoPicker(t.login_with || [], (list) => upd({ login_with: list }))),
+        pwBox,
+        el('label', { class: 'vnotes' }, 'Notas', notes),
+        el('div', { class: 'vwide' }, more),
+        el('div', { class: 'credfoot vfoot' },
+          t.url ? el('a', { class: 'btn small', href: t.url, target: '_blank', rel: 'noopener' }, 'Abrir ↗') : '', el('span', { class: 'grow' }),
+          el('button', { type: 'button', class: 'btn ghost small', onclick: async () => {
+            const { log } = await guard(() => api('GET', `/api/vault/${t.id}/log`));
+            notice({ title: `Registro de ${t.name}`, text: log.length ? log.map((l) => `${fmtDate(l.at, { dateStyle: 'short', timeStyle: 'short' })} · ${l.actor} · ${l.action.replace('bóveda: ', '')}`).join('\n') : 'Sin movimientos.', ok: 'Cerrar' });
+          } }, 'Registro'),
+          el('button', { type: 'button', class: 'btn ghost small danger', onclick: async () => {
+            if (await askConfirm({ title: 'Borrar', text: `Se borra «${t.name}» con sus contraseñas. No se puede deshacer.`, ok: 'Borrar', danger: true })) { await guard(() => api('DELETE', `/api/vault/${t.id}`)); tools = tools.filter((x) => x.id !== t.id); renderList(); }
+          } }, 'Borrar'))));
+  };
+
+  // Estructura fija (el buscador y el alta no se repintan al guardar): título, buscador, alta, lista.
+  const count = el('span', { class: 'muted' });
+  const listBox = el('div', { class: 'credlist vlist' });
+  const search = el('input', { type: 'search', class: 'vsearch', placeholder: 'Buscar por aplicación o servicio…', 'aria-label': 'Buscar por aplicación o servicio', autocomplete: 'off', spellcheck: false, oninput: (e) => { query = e.target.value; renderList(); } });
+
+  const fName = el('input', { id: 'vq-name', name: 'name', type: 'text', required: true, autocomplete: 'off', placeholder: 'Ej.: Canva', 'data-autofocus': '' });
+  const fMail = el('input', { id: 'vq-mail', name: 'username', type: 'text', inputmode: 'email', autocomplete: 'off', placeholder: 'correo@ejemplo.com' });
+  const fP1 = el('input', { id: 'vq-p1', name: 'password', type: 'password', autocomplete: 'new-password' });
+  const fP2 = el('input', { id: 'vq-p2', name: 'password2', type: 'password', autocomplete: 'new-password' });
+  const addErr = el('div', { class: 'err', role: 'alert' });
+  const lab = (id, t, input) => el('label', { for: id }, t, input);
+  const add = el('form', { class: 'vq', novalidate: true, onsubmit: async (e) => {
+    e.preventDefault(); addErr.textContent = ''; fP2.removeAttribute('aria-invalid');
+    const name = fName.value.trim();
+    if (!name) { addErr.textContent = 'Escribe la aplicación o el servicio.'; fName.focus(); return; }
+    if ((fP1.value || fP2.value) && fP1.value !== fP2.value) { addErr.textContent = 'Las contraseñas no coinciden.'; fP2.setAttribute('aria-invalid', 'true'); fP2.focus(); return; }
+    if (tools.some((t) => norm(t.name) === norm(name) && norm(t.username) === norm(fMail.value))) { addErr.textContent = `Ya tienes «${name}» con ese correo.`; return; }
+    try {
+      const body = { name, ...(fMail.value.trim() && { username: fMail.value.trim() }), ...(fP1.value && { password: fP1.value, password2: fP2.value }) };
+      const { tool } = await guard(() => api('POST', '/api/vault', body));
+      tools.push(tool); tools.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+      add.reset(); query = ''; search.value = ''; renderList(); toast(`«${tool.name}» añadida`);
+      const n = listBox.querySelector(`[data-id="${tool.id}"]`); if (n) { n.classList.add('flash'); n.scrollIntoView({ block: 'nearest' }); }
+      fName.focus();
+    } catch (er) { addErr.textContent = er.message; }
+  } }, lab('vq-name', 'Aplicación o servicio', fName), lab('vq-mail', 'Correo electrónico', fMail), lab('vq-p1', 'Contraseña', fP1), lab('vq-p2', 'Repetir contraseña', fP2), el('button', { class: 'btn' }, 'Añadir'), addErr);
+
+  function renderList() {
+    const q = norm(query);
+    const shown = q ? tools.filter((t) => norm([t.name, t.username, t.category, t.purpose, t.used_by, t.url].join(' ')).includes(q)) : tools;
+    count.textContent = q ? `${shown.length} de ${tools.length}` : `${tools.length}`;
+    listBox.replaceChildren(...(shown.length ? shown.map(row)
+      : [el('div', { class: 'vempty' }, tools.length ? el('span', {}, `Nada con «${query.trim()}». `, el('button', { type: 'button', class: 'btn ghost small', onclick: () => { fName.value = query.trim(); fName.focus(); } }, `Añadir «${query.trim()}»`)) : 'Todavía no hay nada. Añade la primera arriba.')]));
+  }
 
   async function draw() {
-    let tools;
     try { ({ tools } = await api('GET', '/api/vault')); } catch (e) { if (e.code === 'password_required') return lock(); throw e; }
-    const soon = (d) => d && (new Date(d) - Date.now()) / 864e5 < 30;
-    const card = (t) => el('article', { class: 'ficha vtool' },
-      el('div', { class: 'top' }, el('span', { class: 'logo', 'aria-hidden': 'true', style: `background:hsl(${hue(t.name)} 45% 40%)` }, t.name[0].toUpperCase()),
-        el('div', {}, el('h3', {}, t.name), el('small', {}, [t.category, t.purpose].filter(Boolean).join(' · ') || 'Sin descripción'))),
-      ssoPills(t.login_with) ? el('div', { class: 'row', style: 'gap:6px' }, ssoPills(t.login_with)) : '',
-      el('div', { class: 'vmeta' }, t.username ? el('span', {}, el('small', {}, 'Usuario'), t.username) : '', t.used_by ? el('span', {}, el('small', {}, 'Quién la usa'), t.used_by) : '',
-        t.cost ? el('span', {}, el('small', {}, 'Coste'), t.cost) : '', t.renewal ? el('span', { class: soon(t.renewal) ? 'soon' : '' }, el('small', {}, 'Renovación'), fmtDate(t.renewal + 'T12:00:00')) : ''),
-      t.notes ? el('p', { class: 'muted', style: 'margin:0;white-space:pre-wrap' }, t.notes) : '',
-      el('div', { class: 'row', style: 'gap:6px' },
-        t.url ? el('a', { class: 'btn small', href: t.url, target: '_blank', rel: 'noopener' }, 'Abrir ↗') : '',
-        t.has_password ? [el('button', { class: 'btn ghost small', onclick: () => reveal(t, 'password', false) }, 'Ver contraseña'), el('button', { class: 'btn ghost small', onclick: () => reveal(t, 'password', true) }, 'Copiar')] : '',
-        t.has_api_key ? [el('button', { class: 'btn ghost small', onclick: () => reveal(t, 'api_key', false) }, 'Ver clave API'), el('button', { class: 'btn ghost small', onclick: () => reveal(t, 'api_key', true) }, 'Copiar clave')] : ''),
-      el('div', { class: 'row', style: 'gap:6px' }, el('button', { class: 'btn ghost small', onclick: async () => { if (await form(t)) draw(); } }, 'Editar'),
-        el('button', { class: 'btn ghost small', onclick: async () => {
-          const { log } = await guard(() => api('GET', `/api/vault/${t.id}/log`));
-          notice({ title: `Registro de ${t.name}`, text: log.length ? log.map((l) => `${fmtDate(l.at, { dateStyle: 'short', timeStyle: 'short' })} · ${l.actor} · ${l.action.replace('bóveda: ', '')}`).join('\n') : 'Sin movimientos.', ok: 'Cerrar' });
-        } }, 'Registro'),
-        el('button', { class: 'btn ghost small danger', onclick: async () => { if (await askConfirm({ title: 'Borrar herramienta', text: `Se borra «${t.name}» con sus contraseñas. No se puede deshacer.`, ok: 'Borrar', danger: true })) { await guard(() => api('DELETE', `/api/vault/${t.id}`)); draw(); } } }, 'Borrar')));
-    view.replaceChildren(el('div', { class: 'row', style: 'margin-bottom:4px' }, el('h1', { class: 'grow' }, `Bóveda de herramientas (${tools.length})`), el('button', { class: 'btn', onclick: async () => { if (await form(null)) draw(); } }, '+ Nueva herramienta')),
-      el('p', { class: 'muted' }, 'Las cuentas de las herramientas que usa AVANIA. Solo los administradores. Ver o copiar una contraseña exige la doble verificación y queda registrado.'),
-      tools.length ? el('div', { class: 'fichas' }, tools.map(card)) : el('p', { class: 'muted' }, 'Todavía no hay herramientas. Añade la primera.'));
+    view.replaceChildren(el('div', { class: 'row vhead' }, el('h1', { class: 'grow' }, 'Bóveda de herramientas ', count), status),
+      el('p', { class: 'muted', style: 'margin:0 0 12px' }, 'Solo administradores. Ver o copiar una contraseña pide la doble verificación y queda registrado.'),
+      search, add, listBox);
+    renderList();
   }
   await draw();
 }

@@ -778,10 +778,13 @@ app.get('/api/clients/:id/credentials', ...staff, requirePasswordRecent, wrap(as
   res.json({ credentials: r.rows.map(credOut) });
 }));
 
+// La contraseña se escribe dos veces al darla de alta o cambiarla (`password2`): si no coinciden no se guarda nada.
+const pwMismatch = (b) => b.password && b.password2 !== undefined && String(b.password) !== String(b.password2);
 app.post('/api/clients/:id/credentials', ...staff, requirePasswordRecent, wrap(async (req, res) => {
   if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Id no válido' });
   const b = req.body;
   if (!clip(b.service, 120)) return res.status(400).json({ error: 'Indica el servicio' });
+  if (pwMismatch(b)) return res.status(400).json({ error: 'Las contraseñas no coinciden' });
   const r = await q(
     `insert into credentials (client_id, service, company, username, email, password_enc, url, notes, status, updated_by, login_with)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
@@ -796,6 +799,7 @@ app.put('/api/credentials/:id', ...staff, requirePasswordRecent, wrap(async (req
   const cur = (await q('select * from credentials where id = $1', [req.params.id])).rows[0];
   if (!cur) return res.status(404).json({ error: 'No existe' });
   const b = req.body;
+  if (pwMismatch(b)) return res.status(400).json({ error: 'Las contraseñas no coinciden' });
   const has = (k) => Object.prototype.hasOwnProperty.call(b, k);
   const status = ['pendiente', 'recibida', 'verificada'].includes(b.status) ? b.status : cur.status;
   let pwd = cur.password_enc;
@@ -900,6 +904,7 @@ app.post(['/api/f/:token/credentials', '/api/p/form/credentials'], byClient, noM
   if (!viewOn(req.client, 'credenciales')) return denyView(res);
   const b = req.body;
   if (!clip(b.service, 120)) return res.status(400).json({ error: 'Indica el servicio' });
+  if (pwMismatch(b)) return res.status(400).json({ error: 'Las contraseñas no coinciden' });
   const n = (await q('select count(*)::int n from credentials where client_id = $1', [req.client.id])).rows[0].n;
   if (n >= 60) return res.status(400).json({ error: 'Demasiadas filas' });
   const r = await q(
@@ -917,6 +922,7 @@ app.put(['/api/f/:token/credentials/:id', '/api/p/form/credentials/:id'], byClie
   const cur = (await q('select * from credentials where id = $1 and client_id = $2', [req.params.id, req.client.id])).rows[0];
   if (!cur) return res.status(404).json({ error: 'No existe' });
   const b = req.body;
+  if (pwMismatch(b)) return res.status(400).json({ error: 'Las contraseñas no coinciden' });
   const has = (k) => Object.prototype.hasOwnProperty.call(b, k);
   const newPwd = has('password') && b.password !== '';
   const sso = has('login_with') ? ssoList(b.login_with) : cur.login_with || [];

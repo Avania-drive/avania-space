@@ -18,6 +18,8 @@ const out = (r) => ({
 export function mountVault(app, { wrap, isUuid, staff, log }) {
   const guard = [...staff, requireRole('super_admin', 'admin'), wrap(requirePasswordRecent)];
   const bad = (res) => res.status(400).json({ error: 'Id no válido' });
+  // La contraseña se escribe dos veces al darla de alta o cambiarla (`password2`): si no coinciden no se guarda nada.
+  const mismatch = (b) => b.password && b.password2 !== undefined && String(b.password) !== String(b.password2);
 
   app.get('/api/vault', ...guard, wrap(async (_req, res) => {
     res.json({ tools: (await q('select * from vault_tools order by lower(name)')).rows.map(out) });
@@ -30,8 +32,9 @@ export function mountVault(app, { wrap, isUuid, staff, log }) {
     password_enc: b.password ? encrypt(String(b.password).slice(0, 500)) : cur.password_enc, login_with: 'login_with' in b ? ssoList(b.login_with) : cur.login_with || [], api_key_enc: b.api_key ? encrypt(String(b.api_key).slice(0, 2000)) : cur.api_key_enc,
   });
   app.post('/api/vault', ...guard, wrap(async (req, res) => {
+    if (mismatch(req.body)) return res.status(400).json({ error: 'Las contraseñas no coinciden' });
     const f = fields(req.body);
-    if (!f.name) return res.status(400).json({ error: 'Pon el nombre de la herramienta' });
+    if (!f.name) return res.status(400).json({ error: 'Pon el nombre de la aplicación o servicio' });
     const r = await q(`insert into vault_tools (name, category, purpose, url, username, used_by, cost, renewal, notes, password_enc, api_key_enc, updated_by, login_with)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *`, [f.name, f.category, f.purpose, f.url, f.username, f.used_by, f.cost, f.renewal, f.notes, f.password_enc, f.api_key_enc, req.user.email, f.login_with]);
     await log(r.rows[0].id, null, req.user.id, req.user.email, 'bóveda: crear');
@@ -41,6 +44,7 @@ export function mountVault(app, { wrap, isUuid, staff, log }) {
     if (!isUuid(req.params.id)) return bad(res);
     const cur = (await q('select * from vault_tools where id = $1', [req.params.id])).rows[0];
     if (!cur) return res.status(404).json({ error: 'No existe' });
+    if (mismatch(req.body)) return res.status(400).json({ error: 'Las contraseñas no coinciden' });
     const f = fields(req.body, cur);
     const r = await q(`update vault_tools set name=$1, category=$2, purpose=$3, url=$4, username=$5, used_by=$6, cost=$7, renewal=$8, notes=$9, password_enc=$10, api_key_enc=$11, updated_at=now(), updated_by=$12, login_with=$14
       where id=$13 returning *`, [f.name, f.category, f.purpose, f.url, f.username, f.used_by, f.cost, f.renewal, f.notes, f.password_enc, f.api_key_enc, req.user.email, cur.id, f.login_with]);

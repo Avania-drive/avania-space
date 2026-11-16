@@ -1069,3 +1069,48 @@ h1.editname:hover .editpen, h1.editname:focus-visible .editpen { opacity: 1; } h
   .phases-list .ph:has(.phtools) { grid-template-columns: 26px minmax(130px, 1fr) 122px 140px 134px 134px auto; column-gap: 8px; }
   .phsub-edit { grid-template-columns: 14px minmax(130px, 1fr) 122px 140px 134px 134px auto !important; column-gap: 8px; }
 }
+
+/* ── Bóveda de herramientas: buscador, alta en una línea y filas desplegables (16-nov-2026) ── */
+.vhead { align-items: baseline; margin-bottom: 4px; }
+.vhead h1 .muted { font-size: .6em; font-weight: 500; margin-left: 4px; }
+.vsearch { width: 100%; max-width: none; height: 42px; margin: 0 0 12px; padding: 0 14px; font-size: 15px; border-radius: var(--radius); }
+.vq { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 10px 12px; align-items: end; padding: 12px; margin: 0 0 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.vq label { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-weight: 600; font-size: 12.5px; color: var(--muted); }
+.vq input { width: 100%; max-width: none; font-weight: 400; color: var(--ink); }
+.vq input[aria-invalid="true"] { border-color: var(--bad, #b42318); }
+.vq .btn { height: 38px; }
+.vq .err { grid-column: 1 / -1; margin: 0; min-height: 0; }
+.vq .err:empty { display: none; }
+.vlist { margin-top: 0; }
+.vlogo { flex: none; width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 13px; }
+details.vrow > summary { min-height: 46px; }
+details.vrow.flash { animation: vflash 1.8s ease-out; }
+@keyframes vflash { 0%, 35% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); } 100% { box-shadow: none; } }
+@media (prefers-reduced-motion: reduce) { details.vrow.flash { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); } }
+.vrow .vpw { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.vrow .vpw .row input { flex: 1 1 170px; min-width: 0; max-width: none; }
+.vrow .vpw .err:empty { display: none; }
+.vrow .vnotes { grid-column: 1 / -1; }
+.vrow .vnotes textarea { width: 100%; max-width: none; resize: vertical; }
+.vrow .vwide { grid-column: 1 / -1; }
+.vmore > summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13px; padding: 2px 0; }
+.vmore .credgrid { padding: 10px 0 0; }
+.vfoot { gap: 6px; align-items: center; }
+.vempty { padding: 22px 12px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--radius); }
+@media (max-width: 960px) { .vq { grid-template-columns: repeat(2, minmax(0, 1fr)); } .vq .btn { grid-column: 1 / -1; } }
+@media (max-width: 560px) { .vq { grid-template-columns: minmax(0, 1fr); } }
+.vrow .vpw > .ssol { font-weight: 600; font-size: 12.5px; color: var(--muted); }
+/* Pantallas estrechas: la cabecera de cada fila puede pasar a dos líneas y la cuadrícula nunca es más ancha que la pantalla. */
+.vrow .credgrid { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
+@media (max-width: 640px) { details.vrow > summary { flex-wrap: wrap; row-gap: 6px; } details.vrow .sum { flex: 1 1 120px; } details.vrow .grow { display: none; } }
+
+/* Credenciales de cada cliente: mismo buscador y alta que la Bóveda (16-nov-2026) */
+details.cred.flash { animation: vflash 1.8s ease-out; }
+@media (prefers-reduced-motion: reduce) { details.cred.flash { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); } }
+.credgrid .vnotes, .credgrid .vpwwrap { grid-column: 1 / -1; }
+.vpwwrap { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.vpwwrap > .ssol { font-weight: 600; font-size: 12.5px; color: var(--muted); }
+.vpw2 .row input { flex: 1 1 170px; min-width: 0; max-width: none; }
+.vpw2 .err:empty { display: none; }
+details.cred .credgrid { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
+@media (max-width: 640px) { details.cred > summary { flex-wrap: wrap; row-gap: 6px; } details.cred .sum { flex: 1 1 120px; } details.cred > summary .grow { display: none; } }
